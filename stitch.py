@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
 import scipy.constants as c
 
-from utils import OPDataset, calculate_histogram_parameters
+from utils import OPDataset, calculate_histogram_parameters, convert_unit
 
 
 class Stitch:
@@ -68,11 +68,11 @@ class Stitch:
         plt.style.use("presentation.mplstyle")
         plt.figure()
         for job_name, params, bin_midpoints_valid, unbiased_free_energy in self.stitched_data[column_name]:
-            plt.plot(bin_midpoints_valid, unbiased_free_energy, label=params)
+            plt.plot(bin_midpoints_valid, convert_unit(unbiased_free_energy), label=params)
 
         plt.title(f"Stitch Plot for {column_name}")
         plt.xlabel(f"{column_name}")
-        plt.ylabel(r"$F$ (kJ/mol)")
+        plt.ylabel(r"$\beta F$")
         if save_fig:
             save_dir.mkdir(parents=True, exist_ok=True)
             save_path = save_dir / f"Stitch_{column_name}.png"

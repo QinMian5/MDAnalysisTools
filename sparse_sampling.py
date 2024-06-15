@@ -5,28 +5,39 @@ import json
 from pathlib import Path
 import numpy as np
 import scipy.constants as c
-from scipy.integrate import cumulative_simpson
+from scipy.integrate import cumulative_simpson, simps
 from scipy.interpolate import CubicSpline
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from utils import OPDataset
+from utils import OPDataset, convert_unit
 
 
 class SparseSampling:
-    def __init__(self, dataset: OPDataset, op: str):
+    def __init__(self, dataset: None | OPDataset, op: str):
         self.dataset = dataset
         self.op = op
-        self.dF_phi_dx: None | list[np.ndarray, np.ndarray] = None
-        self.F_phi: None | list[np.ndarray, np.ndarray] = None
-        self.F_nu_phi: None | list[np.ndarray, np.ndarray] = None
-        self.U_phi: None | list[np.ndarray, np.ndarray] = None
-        self.F_nu: None | list[np.ndarray, np.ndarray] = None
+        self.x: None | np.ndarray = None
+        self.dF_lambda_dx: None | list[np.ndarray, np.ndarray] = None
+        self.F_lambda: None | np.ndarray = None
+        self.F_nu_lambda: None | np.ndarray = None
+        self.U_lambda: None | np.ndarray = None
+        self.F_nu: None | np.ndarray = None
+        self.energy: None | list[np.ndarray, np.ndarray] = None
 
-    def _calculate_dF_phi_dx(self) -> None:
+    def _calculate_x(self) -> None:
         column_name = self.op
         x_list = []
-        df_phi_dx_list = []
+        for job_name, data in self.dataset.items():
+            op_values = data.df[column_name].values
+            mean = op_values.mean()
+            x_list.append(mean)
+        self.x = np.array(x_list)
+
+    def _calculate_dF_lambda_dx(self) -> None:
+        column_name = self.op
+        x_star_list = []
+        df_lambda_dx_list = []
         for job_name, data in self.dataset.items():
             params = data.params[column_name]
             op_values = data.df[column_name].values
@@ -35,75 +46,67 @@ class SparseSampling:
                 op_center = params["CENTER"]
                 kappa = params["KAPPA"]
                 dF_phi_dx = kappa * (op_center - op_values.mean())
-                x_list.append(op_center)
-                df_phi_dx_list.append(dF_phi_dx)
-        self.dF_phi_dx = [np.array(x_list), np.array(df_phi_dx_list)]
+                x_star_list.append(op_center)
+                df_lambda_dx_list.append(dF_phi_dx)
+        self.dF_lambda_dx = [np.array(x_star_list), np.array(df_lambda_dx_list)]
 
-    def _integrate(self) -> None:
-        x, dF_phi_dx = self.dF_phi_dx
-        F_phi = cumulative_simpson(dF_phi_dx, x=x, initial=0)
-        self.F_phi = [x, F_phi]
+    def _calculate_F_lambda(self) -> None:
+        x, dF_lambda_dx = self.dF_lambda_dx
+        F_lambda = cumulative_simpson(dF_lambda_dx, x=x, initial=0)
+        self.F_lambda = F_lambda
 
-    def f_F_phi(self, x):
-        if self.F_phi is None:
-            raise RuntimeError("F_phi has not been calculated. Please execute self.calculate() before calling this "
-                               "method.")
-        cs = CubicSpline(*self.F_phi)
-        return cs(x)
-
-    def _calculate_F_nu_phi(self) -> None:
+    def _calculate_F_nu_lambda(self) -> None:
         column_name = self.op
-        n_sigma = 0.1
-        x_list = []
-        F_nu_phi_list = []
+        F_nu_lambda_list = []
         for job_name, data in self.dataset.items():
             op_values = data.df[column_name].values
-            mean = op_values.mean()
             std = op_values.std()
-            N_total = len(op_values)
-            N_center = len(op_values[(op_values <= mean + std * n_sigma) & (op_values >= mean - std * n_sigma)])
-            p_center = N_center / N_total / (2 * std * n_sigma)
-            F_nu_phi = -1 / data.beta * np.log(p_center)
-            # F_nu_phi = 0.5 * np.log(2 * np.pi * std ** 2) / data.beta
-            F_nu_phi = F_nu_phi / 1000 * c.N_A  # To kJ/mol
-            x_list.append(mean)
-            F_nu_phi_list.append(F_nu_phi)
-        self.F_nu_phi = [np.array(x_list), np.array(F_nu_phi_list)]
+            F_nu_lambda = 0.5 * np.log(2 * np.pi * std ** 2) / data.beta
+            F_nu_lambda = F_nu_lambda / 1000 * c.N_A  # To kJ/mol
+            F_nu_lambda_list.append(F_nu_lambda)
+        self.F_nu_lambda = np.array(F_nu_lambda_list)
 
-    def _calculate_U_phi(self) -> None:
+    def _calculate_U_lambda(self) -> None:
         column_name = self.op
-        x, _ = self.F_nu_phi
-        U_phi_list = []
+        x = self.x
+        U_lambda_list = []
         for i, (job_name, data) in enumerate(self.dataset.items()):
-            U_phi = data.calculate_bias_potential({column_name: x[i]})
-            U_phi_list.append(U_phi)
-        U_phi = np.array(U_phi_list)
-        self.U_phi = [x, U_phi]
+            U_lambda = data.calculate_bias_potential({column_name: x[i]})
+            U_lambda_list.append(U_lambda)
+        self.U_lambda = np.array(U_lambda_list)
 
     def _calculate_F_nu(self) -> None:
-        x, F_nu_phi = self.F_nu_phi
-        _, U_phi = self.U_phi
+        F_nu_lambda = self.F_nu_lambda
+        U_lambda = self.U_lambda
+        F_lambda = self.F_lambda
 
-        F_phi = self.f_F_phi(x)
+        F_nu = F_nu_lambda - U_lambda + F_lambda
+        self.F_nu = F_nu
 
-        F_nu = F_nu_phi - U_phi + F_phi
-        self.F_nu = [x, F_nu]
+    def _calculate_energy(self) -> None:
+        x = self.x
+        F_nu = self.F_nu
+        energy = F_nu - F_nu.min()
+        self.energy = [x, energy]
 
     def calculate(self):
-        self._calculate_dF_phi_dx()
-        self._integrate()
-        self._calculate_F_nu_phi()
-        self._calculate_U_phi()
+        self._calculate_x()
+        self._calculate_dF_lambda_dx()
+        self._calculate_F_lambda()
+        self._calculate_F_nu_lambda()
+        self._calculate_U_lambda()
         self._calculate_F_nu()
+        self._calculate_energy()
 
     def plot(self, save_fig: bool = True, save_dir=Path("./figure"), k=0.0):
         plt.style.use("presentation.mplstyle")
         column_name = self.op
         fig, ax = plt.subplots()
-        x, F_nu = self.F_nu
-        line1 = ax.plot(x, F_nu, "bo-", label=r"$F_{\nu} + kx$")
+        x = self.x
+        F_nu = self.F_nu
+        line1 = ax.plot(x, convert_unit(F_nu) + k * x, "bo-", label=r"$\beta F_{\nu} + kx$")
         ax.set_xlabel(f"{column_name}")
-        ax.set_ylabel(r"$F$ (kJ/mol)")
+        ax.set_ylabel(r"$\beta F_{\nu}$")
         ax.tick_params(axis='y')
 
         lines = [line1[0]]
@@ -125,21 +128,19 @@ class SparseSampling:
         fig, ax1 = plt.subplots()
         ax1.set_title("Sparse Sampling (Debug)")
         ax1.set_xlabel(f"{column_name}")
-        ax1.set_ylabel(r"$F$ (kJ/mol)", color="blue")
-        ax1.tick_params(axis='y', colors="red")
-        x, F_nu_phi = self.F_nu_phi
-        line1 = ax1.plot(x, F_nu_phi, "bo--", label=r"$F_{\nu}^{\phi}$")
-        x, U_phi = self.U_phi
-        line2 = ax1.plot(x, U_phi, "bv--", label=r"$U_{\phi}$")
-        # x = np.linspace(x.min(), x.max(), 100)
-        # F_phi = self.f_F_phi(x)
-        # line3 = ax1.plot(x, F_phi, "b--", label=r"$F_{\phi}$")
+        ax1.set_ylabel(r"$\beta F$", color="blue")
+        ax1.tick_params(axis='y', colors="blue")
+        x = self.x
+        F_nu_lambda = self.F_nu_lambda
+        line1 = ax1.plot(x, convert_unit(F_nu_lambda), "bo--", label=r"$\beta F_{\nu}^{\lambda}$")
+        U_lambda = self.U_lambda
+        line2 = ax1.plot(x, convert_unit(U_lambda), "bv--", label=r"$\beta U_{\lambda}$")
 
         ax2 = ax1.twinx()
-        ax2.set_ylabel(r"$d F_{\phi} / d x$", color="red")
+        ax2.set_ylabel(r"$\beta dF_{\lambda} / dx$", color="red")
         ax2.tick_params(axis='y', colors="red")
-        x, dF_phi_dx = self.dF_phi_dx
-        line4 = ax2.plot(x, dF_phi_dx, "ro--", label=r"$d F_{\phi} / d x$")
+        x, dF_lambda_dx = self.dF_lambda_dx
+        line4 = ax2.plot(x, convert_unit(dF_lambda_dx), "ro--", label=r"$\beta dF_{\lambda} / dx$")
 
         lines = [line1[0], line2[0], line4[0]]
         labels = [line.get_label() for line in lines]
@@ -154,8 +155,9 @@ class SparseSampling:
             plt.show()
 
     def save_result(self, save_dir=Path(".")):
-        x, F_nu = self.F_nu
-        df = pd.DataFrame({"x": x, "F_nu": F_nu})
+        x, energy = self.energy
+        x_star, dF_lambda_dx = self.dF_lambda_dx
+        df = pd.DataFrame({"x": x, "energy": energy, "x_star": x_star, "dF_lambda_dx": dF_lambda_dx})
         save_dir.mkdir(exist_ok=True)
         save_path = save_dir / "result_sparse_sampling.csv"
         df.to_csv(save_path)
@@ -165,8 +167,11 @@ class SparseSampling:
         save_path = save_dir / "result_sparse_sampling.csv"
         df = pd.read_csv(save_path)
         x = df["x"].values
-        F_nu = df["F_nu"].values
-        self.F_nu = [x, F_nu]
+        energy = df["energy"].values
+        x_star = df["x_star"].values
+        dF_lambda_dx = df["dF_lambda_dx"].values
+        self.energy = [x, energy]
+        self.dF_lambda_dx = [x_star, dF_lambda_dx]
         print(f"Loaded the result from {save_path.resolve()}")
 
 

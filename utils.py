@@ -155,21 +155,29 @@ def calculate_histogram_parameters(dataset: OPDataset, column_name, num_bins: in
     return num_bins, bin_range
 
 
+def convert_unit(src_value: float | np.ndarray, src_unit="kJ/mol", dst_unit="kT", T=300) -> float | np.ndarray:
+    _valid_units = ["kJ/mol", "kT"]
+    if src_unit not in _valid_units or dst_unit not in _valid_units:
+        raise ValueError("src_unit and dst_unit must be 'kJ/mol' or 'kT'")
+
+    if src_unit == "kJ/mol":
+        value_in_SI = src_value * 1000 / c.N_A
+    elif src_unit == "kT":
+        value_in_SI = src_value * c.k * T
+    else:
+        raise ValueError(f"Unsupported source unit: {src_unit}")
+
+    if dst_unit == "kJ/mol":
+        dst_value = value_in_SI * c.N_A / 1000
+    elif dst_unit == "kT":
+        dst_value = value_in_SI / (c.k * T)
+    else:
+        raise ValueError(f"Unsupported destination unit: {src_unit}")
+    return dst_value
+
+
 def main():
-    def filename2bias_params(filename):
-        param = filename.split('_')[1][:-4]
-        return {"x": param}
-
-    def filename2order(filename):
-        order = float(filename.split('_')[1][:-4])
-        return order
-
-    data = load_dataset(
-        data_dir=DATA_DIR,
-        column_names=["t", "x", "y", "z"],
-        column_types={"t": float, "x": float},
-    )
-    print(data)
+    ...
 
 
 if __name__ == "__main__":

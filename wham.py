@@ -8,7 +8,7 @@ import scipy.constants as c
 import autograd.numpy as agnp
 import matplotlib.pyplot as plt
 
-from utils import OPDataset, calculate_histogram_parameters
+from utils import OPDataset, calculate_histogram_parameters, convert_unit
 from optimize import LBFGS, alogsumexp
 
 
@@ -69,6 +69,7 @@ class BinlessWHAM:
         p_wj = hist_wj / np.sum(hist_wj)
         bin_midpoints = (bin_edges[1:] + bin_edges[:-1]) / 2
         energy = -1 / self.dataset.beta.mean() * np.log(p_wj) / 1000 * c.N_A  # To kJ/mol
+        energy = energy - energy.min()
         self.energy = [bin_midpoints, energy]
 
     @staticmethod
@@ -98,11 +99,12 @@ class BinlessWHAM:
     def plot(self, save_fig=True, save_dir=Path("./figure")):
         plt.style.use("presentation.mplstyle")
         column_name = self.op
+        x, energy = self.energy
         plt.figure()
-        plt.plot(*self.energy, label="BinlessWHAM")
+        plt.plot(x, convert_unit(energy), label="BinlessWHAM")
         plt.title(f"Binless WHAM")
-        plt.xlabel(f"x")
-        plt.ylabel(r"$F$ (kJ/mol)")
+        plt.xlabel(f"{column_name}")
+        plt.ylabel(r"$\beta F$")
         plt.legend()
         if save_fig:
             save_dir.mkdir(exist_ok=True)

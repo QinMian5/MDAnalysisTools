@@ -3,7 +3,7 @@
 from pathlib import Path
 import json
 
-from utils import load_dataset, OPDataset
+from utils import load_dataset, OPDataset, convert_unit
 from eda import EDA
 from stitch import Stitch
 from wham import BinlessWHAM
@@ -30,18 +30,21 @@ def read_data() -> OPDataset:
 def compare():
     import matplotlib.pyplot as plt
     dataset = read_data()
-    wham = BinlessWHAM(dataset, "NTILDE")
+    op = "NTILDE"
+    wham = BinlessWHAM(dataset, op)
     wham.load_result(FIGURE_SAVE_DIR)
-    ss = SparseSampling(dataset, "NTILDE")
+    ss = SparseSampling(dataset, op)
     ss.load_result(FIGURE_SAVE_DIR)
 
     plt.style.use("presentation.mplstyle")
-    plt.figure()
+    fig, ax = plt.subplots()
     x1, y1 = wham.energy
-    x2, y2 = ss.F_nu
-    y2 = y2 + 145
-    plt.plot(x1, y1, "r-", label="WHAM")
-    plt.plot(x2, y2, "bo-", label="Sparse Sampling")
+    x2, y2 = ss.energy
+    ax.plot(x1, convert_unit(y1), "r-", label="WHAM")
+    ax.plot(x2, convert_unit(y2), "bo-", label="Sparse Sampling")
+    ax.set_title("Vapor Pocket, WHAM vs SparseSampling")
+    ax.set_xlabel(f"{op}")
+    ax.set_ylabel(r"$\beta F$")
     plt.legend()
 
     save_dir = FIGURE_SAVE_DIR
@@ -66,9 +69,10 @@ def main():
     ss = SparseSampling(dataset, op)
     ss.calculate()
     ss.plot(save_dir=FIGURE_SAVE_DIR)
+    ss.plot_debug(save_dir=FIGURE_SAVE_DIR)
     ss.save_result(save_dir=FIGURE_SAVE_DIR)
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     compare()

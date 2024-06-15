@@ -7,7 +7,7 @@ import numpy as np
 import scipy.ndimage
 from scipy.interpolate import CubicSpline
 
-from utils import load_dataset, OPDataset
+from utils import load_dataset, OPDataset, convert_unit
 from eda import EDA
 from wham import BinlessWHAM
 from sparse_sampling import SparseSampling
@@ -44,16 +44,16 @@ def plot_gradient():
 
     plt.style.use("presentation.mplstyle")
     fig, ax1 = plt.subplots()
-    ax1.set_title("Gradient fo Energy")
+    ax1.set_title("Gradient of Energy, WHAM")
     ax1.set_xlabel(f"{op}")
-    ax1.set_ylabel(f"$d F / d x$ (kJ/mol)", color="red")
-    ax1.tick_params(axis='y', colors="red")
-    ax1.plot(x, dy, "r-")
+    ax1.set_ylabel(r"$\beta dF / dx$", color="blue")
+    ax1.tick_params(axis='y', colors="blue")
+    ax1.plot(x, convert_unit(dy), "b-")
 
     ax2 = ax1.twinx()
-    ax2.set_ylabel(f"$d^2 F / d x^2$ (kJ/mol)", color="blue")
-    ax2.tick_params(axis='y', colors="blue")
-    ax2.plot(x, d2y, "b-")
+    ax2.set_ylabel(r"$\beta d^2F / dx^2$", color="red")
+    ax2.tick_params(axis='y', colors="red")
+    ax2.plot(x, convert_unit(d2y), "r-")
 
     save_dir = DATA_DIR / "figure"
     save_dir.mkdir(exist_ok=True)
@@ -72,16 +72,16 @@ def compare():
     x1, y1 = wham.energy
     ss = SparseSampling(dataset, op)
     ss.load_result(save_dir=FIGURE_SAVE_DIR)
-    x2, y2 = ss.F_nu
+    x2, y2 = ss.energy
     y2 = y2 - 1.2 * (x2 > 206)  # An estimation of the integration of changing kappa
 
     plt.style.use("presentation.mplstyle")
     plt.figure()
-    plt.plot(x1, y1, "r-", label="WHAM")
-    plt.plot(x2, y2, "bo-", label="Sparse Sampling")
+    plt.plot(x1, convert_unit(y1), "r-", label="WHAM")
+    plt.plot(x2, convert_unit(y2), "bo-", label="Sparse Sampling")
     plt.title("Box of Ice, WHAM vs SparseSampling")
     plt.xlabel(f"{op}")
-    plt.ylabel(f"$F$ (kJ/mol)")
+    plt.ylabel(r"$\beta F$")
     plt.legend()
 
     save_dir = DATA_DIR / "figure"
@@ -101,14 +101,18 @@ def compare():
     fig, ax1 = plt.subplots()
     ax1.set_title(r"Gradient of Energy Difference, $\Delta F = F_{WHAM} - F_{SS}$")
     ax1.set_xlabel(f"{op}")
-    ax1.set_ylabel(r"$\Delta F$ (kJ/mol)", color="red")
+    ax1.set_ylabel(r"$\beta\Delta F$", color="red")
     ax1.tick_params(axis='y', colors="red")
-    ax1.plot(x, delta_y, "r-")
+    line1 = ax1.plot(x, convert_unit(delta_y), "r-", label=r"$\Delta F$")
 
     ax2 = ax1.twinx()
-    ax2.set_ylabel(r"$d \Delta F / d x$ (kJ/mol)", color="blue")
+    ax2.set_ylabel(r"$\beta d\Delta F / dx$", color="blue")
     ax2.tick_params(axis='y', colors="blue")
-    ax2.plot(x, delta_dy, "b-")
+    line2 = ax2.plot(x, convert_unit(delta_dy), "b-", label=r"$d \Delta F / d x$")
+
+    lines = [line1[0], line2[0]]
+    labels = [line.get_label() for line in lines]
+    ax1.legend(lines, labels)
 
     save_dir = DATA_DIR / "figure"
     save_dir.mkdir(exist_ok=True)
@@ -120,13 +124,13 @@ def compare():
 def main():
     dataset = read_data()
     op = "QBAR"
-    # eda = EDA(dataset)
-    # eda.plot_acf(column_name=op, nlags=50, save_dir=FIGURE_SAVE_DIR)
-    # eda.plot_histogram(column_name=op, bin_range=(0, 100), save_dir=FIGURE_SAVE_DIR)
-    # wham = BinlessWHAM(dataset, op)
-    # wham.calculate([op])
-    # wham.plot(save_dir=FIGURE_SAVE_DIR)
-    # wham.save_result(save_dir=FIGURE_SAVE_DIR)
+    eda = EDA(dataset)
+    eda.plot_acf(column_name=op, nlags=50, save_dir=FIGURE_SAVE_DIR)
+    eda.plot_histogram(column_name=op, bin_range=(0, 432), save_dir=FIGURE_SAVE_DIR)
+    wham = BinlessWHAM(dataset, op)
+    wham.calculate([op])
+    wham.plot(save_dir=FIGURE_SAVE_DIR)
+    wham.save_result(save_dir=FIGURE_SAVE_DIR)
     ss = SparseSampling(dataset, op)
     ss.calculate()
     ss.plot(save_dir=FIGURE_SAVE_DIR, k=0.0)
@@ -135,6 +139,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     plot_gradient()
     compare()
