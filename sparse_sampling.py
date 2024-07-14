@@ -98,22 +98,22 @@ class SparseSampling:
         self._calculate_F_nu()
         self._calculate_energy()
 
-    def plot(self, save_fig: bool = True, save_dir=Path("./figure"), k=0.0):
+    def plot(self, save_fig: bool = True, save_dir=Path("./figure"), delta_mu=0.0):
         plt.style.use("presentation.mplstyle")
         column_name = self.op
         fig, ax = plt.subplots()
         x = self.x
         F_nu = self.F_nu
-        line1 = ax.plot(x, convert_unit(F_nu) + k * x, "bo-", label=r"$\beta F_{\nu} + kx$")
+        line1 = ax.plot(x, convert_unit(F_nu) + delta_mu * x, "bo-")
         ax.set_xlabel(f"{column_name}")
-        ax.set_ylabel(r"$\beta F_{\nu}$")
+        ax.set_ylabel(r"$\beta F + \Delta\mu N$")
         ax.tick_params(axis='y')
 
         lines = [line1[0]]
         labels = [line.get_label() for line in lines]
         ax.legend(lines, labels)
 
-        plt.title(f"Sparse Sampling, k = {k}")
+        plt.title(rf"Sparse Sampling, $\Delta\mu = {delta_mu} k_BT$")
         if save_fig:
             save_dir.mkdir(exist_ok=True)
             save_path = save_dir / f"SparseSampling_{column_name}.png"

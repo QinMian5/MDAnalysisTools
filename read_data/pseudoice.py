@@ -11,7 +11,8 @@ from utils import load_dataset, OPDataset, convert_unit
 from eda import EDA
 from sparse_sampling import SparseSampling
 
-DATA_DIR = Path("/home/qinmian/data/gromacs/pseudoice/0.5/prd/melting/result")
+RHO = 1.0
+DATA_DIR = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{RHO}/prd/melting/result")
 FIGURE_SAVE_DIR = DATA_DIR / "figure"
 
 
@@ -30,23 +31,47 @@ def read_data() -> OPDataset:
     return dataset
 
 
+def plot_curvature_th(rho):
+    plt.style.use("presentation.mplstyle")
+
+    op = "QBAR"
+    fig, ax = plt.subplots()
+    save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result/figure")
+    ss = SparseSampling(None, op)
+    ss.load_result(save_dir=save_dir)
+    x, dF_lambda_dx = ss.dF_lambda_dx
+    ax.plot(x, convert_unit(dF_lambda_dx), "o-", color="black")
+    y = np.ones_like(x) * 0.24
+    ax.plot(x, y, "--", color="black", label="Zero curvature")
+    ax.set_title(rf"Mean Curvature, rho = {rho}")
+    ax.set_xlabel(r"Number of ice-like molecules ($\lambda^*$)")
+    ax.set_ylabel(r"$\beta \frac{dG}{d\lambda}$")
+    ax.legend()
+
+    save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result/figure")
+    save_dir.mkdir(exist_ok=True)
+    save_path = save_dir / "curvature.png"
+    plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
+    print(f"Saved the figure to {save_path.resolve()}")
+
+
 def plot_all():
     plt.style.use("presentation.mplstyle")
 
     op = "QBAR"
-    rho_list = ["0.0", "0.5", "1.0"]
-    k = -0.22
+    rho_list = ["0.0", "0.25", "0.5", "0.75", "1.0"]
+    delta_mu = -0.22
     fig, ax = plt.subplots()
-    colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, 3))
+    colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, len(rho_list)))
     for rho, color in zip(rho_list, colors):
-        save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/{rho}/prd/melting/result/figure")
+        save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result/figure")
         ss = SparseSampling(None, op)
         ss.load_result(save_dir=save_dir)
         x, energy = ss.energy
-        ax.plot(x, convert_unit(energy) + k * x, "o-", color=color, label=rf"$\rho = {rho}$")
-    ax.set_title(rf"Free Energy Profile Variation with Polarity $(\rho)$, $k = {k}$")
+        ax.plot(x, convert_unit(energy) + delta_mu * x, "o-", color=color, label=rf"$\rho = {rho}$")
+    ax.set_title(rf"Free Energy Profile Variation with Polarity $(\rho)$, $\Delta\mu = {delta_mu} k_BT$")
     ax.set_xlabel("Number of ice-like molecules")
-    ax.set_ylabel(r"$\beta F + kN$")
+    ax.set_ylabel(r"$\beta F + \Delta\mu N$")
     ax.legend()
 
     save_dir = Path("/home/qinmian/data/gromacs/pseudoice/figure")
@@ -60,11 +85,11 @@ def plot_all_debug():
     plt.style.use("presentation.mplstyle")
 
     op = "QBAR"
-    rho_list = ["0.0", "0.5", "1.0"]
+    rho_list = ["0.0", "0.25", "0.5", "0.75", "1.0"]
     fig, ax = plt.subplots()
-    colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, 3))
+    colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, len(rho_list)))
     for rho, color in zip(rho_list, colors):
-        save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/{rho}/prd/melting/result/figure")
+        save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result/figure")
         ss = SparseSampling(None, op)
         ss.load_result(save_dir=save_dir)
         x_star, dF_lambda_dx_star = ss.dF_lambda_dx
@@ -88,12 +113,14 @@ def main():
     eda.plot_histogram(column_name="QBAR", bin_width=2, bin_range=(0, 2000), save_dir=FIGURE_SAVE_DIR)
     ss = SparseSampling(dataset, "QBAR")
     ss.calculate()
-    ss.plot(save_dir=FIGURE_SAVE_DIR, k=-0.22)
+    ss.plot(save_dir=FIGURE_SAVE_DIR, delta_mu=-0.22)
     ss.plot_debug(save_dir=FIGURE_SAVE_DIR)
     ss.save_result(save_dir=FIGURE_SAVE_DIR)
 
 
 if __name__ == "__main__":
     # main()
-    plot_all()
-    plot_all_debug()
+    for rho in [0.0, 0.25, 0.5, 0.75, 1.0]:
+        plot_curvature_th(rho)
+    # plot_all()
+    # plot_all_debug()
