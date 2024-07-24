@@ -8,7 +8,8 @@ from matplotlib import pyplot as plt
 from scipy.interpolate import interp1d
 import scipy.constants as c
 
-from utils import OPDataset, calculate_histogram_parameters, convert_unit
+from utils import calculate_histogram_parameters, convert_unit
+from op_dataset import OPDataset
 
 
 class Stitch:

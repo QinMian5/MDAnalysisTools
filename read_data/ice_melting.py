@@ -7,7 +7,8 @@ import numpy as np
 import scipy.ndimage
 from scipy.interpolate import CubicSpline
 
-from utils import load_dataset, OPDataset, convert_unit
+from utils import load_dataset, convert_unit
+from op_dataset import OPDataset
 from eda import EDA
 from wham import BinlessWHAM
 from sparse_sampling import SparseSampling
@@ -125,7 +126,7 @@ def main():
     dataset = read_data()
     op = "QBAR"
     eda = EDA(dataset)
-    eda.plot_acf(column_name=op, nlags=50, save_dir=FIGURE_SAVE_DIR)
+    eda.plot_autocorr(column_name=op, save_dir=FIGURE_SAVE_DIR)
     eda.plot_histogram(column_name=op, bin_range=(0, 432), save_dir=FIGURE_SAVE_DIR)
     wham = BinlessWHAM(dataset, op)
     wham.calculate([op])

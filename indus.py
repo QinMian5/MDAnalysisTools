@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.special import logsumexp
 
-from utils import OPDataset
+from op_dataset import OPDataset
 from wham import BinlessWHAM
 
 

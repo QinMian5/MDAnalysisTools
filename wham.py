@@ -8,11 +8,14 @@ import scipy.constants as c
 import autograd.numpy as agnp
 import matplotlib.pyplot as plt
 
-from utils import OPDataset, calculate_histogram_parameters, convert_unit
+from utils import calculate_histogram_parameters, convert_unit
+from op_dataset import OPDataset
 from optimize import LBFGS, alogsumexp
 
 
 class BinlessWHAM:
+    result_filename = "result_wham.csv"
+
     def __init__(self, dataset: OPDataset, op: str):
         self.dataset = dataset
         self.op = op
@@ -100,12 +103,12 @@ class BinlessWHAM:
         plt.style.use("presentation.mplstyle")
         column_name = self.op
         x, energy = self.energy
-        plt.figure()
-        plt.plot(x, convert_unit(energy), label="BinlessWHAM")
-        plt.title(f"Binless WHAM")
-        plt.xlabel(f"{column_name}")
-        plt.ylabel(r"$\beta F$")
-        plt.legend()
+        fig, ax = plt.subplots()
+        ax.plot(x, convert_unit(energy), label="BinlessWHAM")
+        ax.set_title(f"Binless WHAM")
+        ax.set_xlabel(f"{column_name}")
+        ax.set_ylabel(r"$\beta F$")
+        ax.legend()
         if save_fig:
             save_dir.mkdir(exist_ok=True)
             save_path = save_dir / f"WHAM_{column_name}.png"
@@ -113,17 +116,18 @@ class BinlessWHAM:
             print(f"Saved the figure to {save_path.resolve()}")
         else:
             plt.show()
+        plt.close(fig)
 
     def save_result(self, save_dir=Path(".")):
         x, energy = self.energy
         df = pd.DataFrame({"x": x, "energy": energy})
         save_dir.mkdir(exist_ok=True)
-        save_path = save_dir / "result_wham.csv"
+        save_path = save_dir / self.result_filename
         df.to_csv(save_path)
         print(f"Saved the result to {save_path.resolve()}")
 
     def load_result(self, save_dir=Path(".")):
-        save_path = save_dir / "result_wham.csv"
+        save_path = save_dir / self.result_filename
         df = pd.read_csv(save_path)
         x = df["x"].values
         energy = df["energy"].values

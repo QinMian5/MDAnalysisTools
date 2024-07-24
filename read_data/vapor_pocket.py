@@ -3,22 +3,21 @@
 from pathlib import Path
 import json
 
-from utils import load_dataset, OPDataset, convert_unit
+from utils import load_dataset, convert_unit
+from op_dataset import OPDataset
 from eda import EDA
 from stitch import Stitch
 from wham import BinlessWHAM
 from sparse_sampling import SparseSampling
 
-DATA_DIR = Path("/home/qinmian/data/gromacs/vapor_pocket/prd/result")
-FIGURE_SAVE_DIR = DATA_DIR / "figure"
-
 
 def read_data() -> OPDataset:
-    with open(DATA_DIR / "job_params.json", 'r') as file:
+    data_dir = Path("/home/qinmian/data/gromacs/vapor_pocket/prd/result")
+    with open(data_dir / "job_params.json", 'r') as file:
         job_params = json.load(file)
 
     dataset: OPDataset = load_dataset(
-        data_dir=DATA_DIR,
+        data_dir=data_dir,
         job_params=job_params,
         column_names=["t", "N", "NTILDE"],
         column_types={"t": float, "N": int, "NTILDE": float},
@@ -54,23 +53,25 @@ def compare():
 
 
 def main():
+    figure_save_dir = Path("/home/qinmian/data/gromacs/vapor_pocket/prd") / "figure"
     op = "NTILDE"
     dataset = read_data()
     eda = EDA(dataset)
-    eda.plot_acf(column_name=op, nlags=50, save_dir=FIGURE_SAVE_DIR)
-    eda.plot_histogram(column_name=op, save_dir=FIGURE_SAVE_DIR)
+    eda.calculate(column_name=op)
+    eda.plot_autocorr(column_name=op, save_dir=figure_save_dir)
+    eda.plot_histogram(column_name=op, save_dir=figure_save_dir)
     stitch = Stitch(dataset)
     stitch.stitch(column_name=op)
-    stitch.plot(column_name=op, save_dir=FIGURE_SAVE_DIR)
+    stitch.plot(column_name=op, save_dir=figure_save_dir)
     wham = BinlessWHAM(dataset, op)
     wham.calculate([op])
-    wham.plot(save_dir=FIGURE_SAVE_DIR)
-    wham.save_result(save_dir=FIGURE_SAVE_DIR)
+    wham.plot(save_dir=figure_save_dir)
+    wham.save_result(save_dir=figure_save_dir)
     ss = SparseSampling(dataset, op)
     ss.calculate()
-    ss.plot(save_dir=FIGURE_SAVE_DIR)
-    ss.plot_debug(save_dir=FIGURE_SAVE_DIR)
-    ss.save_result(save_dir=FIGURE_SAVE_DIR)
+    ss.plot(save_dir=figure_save_dir)
+    ss.plot_debug(save_dir=figure_save_dir)
+    ss.save_result(save_dir=figure_save_dir)
 
 
 if __name__ == "__main__":
