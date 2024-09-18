@@ -80,7 +80,9 @@ def calculate_histogram_parameters(dataset: OPDataset, column_name, num_bins: in
     return num_bins, bin_range
 
 
-def convert_unit(src_value: float | np.ndarray, src_unit="kJ/mol", dst_unit="kT", T=300) -> float | np.ndarray:
+def convert_unit(src_value: float | np.ndarray, src_unit="kJ/mol", dst_unit="kT", T=None) -> float | np.ndarray:
+    if T is None:
+        T = 300
     _valid_units = ["kJ/mol", "kT"]
     if src_unit not in _valid_units or dst_unit not in _valid_units:
         raise ValueError("src_unit and dst_unit must be 'kJ/mol' or 'kT'")

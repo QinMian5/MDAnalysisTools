@@ -104,6 +104,14 @@ class OPDataset(OrderedDict[str, OPData]):
         super().__init__(*args, **kwargs)
 
     @property
+    def T(self):
+        T = []
+        for job_name, data in self.items():
+            T.append(data.T)
+        T = np.array(T).reshape(-1, 1)
+        return T
+
+    @property
     def beta(self):
         beta = []
         for job_name, data in self.items():

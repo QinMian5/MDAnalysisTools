@@ -1,8 +1,8 @@
 # Author: Mian Qin
 # Date Created: 6/4/24
 import json
-
 from pathlib import Path
+
 import numpy as np
 import scipy.constants as c
 from scipy.integrate import cumulative_simpson
@@ -10,6 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from utils import convert_unit
+from utils_plot import create_fig_ax, save_figure
 from op_dataset import OPDataset
 
 
@@ -147,86 +148,65 @@ class SparseSampling:
         self._calculate_energy()
         # self._calculate_dF_nu_dx()
 
-    def plot(self, save_fig: bool = True, save_dir=Path("./figure"), delta_mu=0.0):
-        plt.style.use("presentation.mplstyle")
-        column_name = self.op
-        fig, ax = plt.subplots()
+    def plot_free_energy_plot_line(self, ax, delta_mu=None, T=None, label=None, x_range=None):
         x = self.x
         F_nu = self.F_nu
-        line1 = ax.plot(x, convert_unit(F_nu) + delta_mu * x, "bo-")
-        ax.set_xlabel(f"{column_name}")
-        ax.set_ylabel(r"$\beta F + \Delta\mu N$")
-        ax.tick_params(axis='y')
+        if x_range is not None:
+            index = (x_range[0] <= x) & (x <= x_range[1])
+            x = x[index]
+            F_nu = F_nu[index]
 
-        # lines = [line1[0]]
-        # labels = [line.get_label() for line in lines]
-        # ax.legend(lines, labels)
-        plt.title(rf"Sparse Sampling, $\Delta\mu = {delta_mu} k_BT$")
-        if save_fig:
-            save_dir.mkdir(exist_ok=True)
-            save_path = save_dir / f"SparseSampling_{column_name}.png"
-            plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-            print(f"Saved the figure to {save_path.resolve()}")
-        else:
-            plt.show()
+        line = ax.plot(x, convert_unit(F_nu + delta_mu * x, T=T), "o-", label=label)[0]
+        return line
+
+    def plot_free_energy(self, save_dir=Path("./figure")):
+        op = self.op
+        fig, ax = create_fig_ax(f"Free Energy", f"{op}", fr"$\beta F$")
+        ax.tick_params(axis='y')
+        self.plot_free_energy_plot_line(ax)
+
+        save_path = save_dir / f"sparse_sampling_free_energy.png"
+        save_figure(fig, save_path)
         plt.close(fig)
 
-    def plot_different_DeltaT(self, save_fig: bool = True, save_dir=Path("./figure")):
-        plt.style.use("presentation.mplstyle")
-        column_name = self.op
-        x = self.x
-        F_nu = self.F_nu
+    def plot_different_DeltaT(self, save_dir=Path("./figure")):
+        T_m = 271  # K
+        Delta_H_m = 5.6  # kJ/mol
+        T_sim = np.mean(self.dataset.T)
 
-        fig, ax = plt.subplots()
-        ax.plot(x, convert_unit(F_nu), "o-", label=r"Raw data (at $300\ \mathrm{K}$)")
+        title = fr"Free Energy Profile at Different $\Delta T$"
+        x_label = fr"$\lambda$"
+        y_label = fr"$G(\lambda;\Delta T)$"
+        fig, ax = create_fig_ax(title, x_label, y_label)
+        ax.tick_params(axis='y')
+        self.plot_free_energy_plot_line(ax, label=r"Raw data (at $300\ \mathrm{K}$)")
+
         for Delta_T in range(0, 105, 10):
-            T_m = 271  # K
-            Delta_H_m = 5.6  # kJ/mol
-            Delta_mu = - Delta_H_m / T_m * (Delta_T + 300 - T_m)
-            ax.plot(x, convert_unit(F_nu + Delta_mu * x, T=T_m-Delta_T), "o-", label=rf"${Delta_T}\ \mathrm{{K}}$")
-        ax.set_xlabel(rf"$\lambda$")
-        ax.set_ylabel(r"$G(\lambda;\Delta T)$")
-        ax.tick_params(axis='y')
+            T = T_m - Delta_T
+            Delta_mu = - Delta_H_m / T_m * (Delta_T + T_sim - T_m)
+            label = fr"${Delta_T}\ \mathrm{{K}}$"
+            self.plot_free_energy_plot_line(ax, delta_mu=Delta_mu, T=T, label=label)
 
-        # lines = [line1[0]]
-        # labels = [line.get_label() for line in lines]
         ax.legend()
-        plt.title(rf"Free Energy Profile at Different $\Delta T$")
-        if save_fig:
-            save_dir.mkdir(exist_ok=True)
-            save_path = save_dir / f"SparseSampling_{column_name}_DeltaT.png"
-            plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-            print(f"Saved the figure to {save_path.resolve()}")
-        else:
-            plt.show()
+        save_path = save_dir / f"sparse_sampling_DeltaT.png"
+        save_figure(fig, save_path)
         plt.close(fig)
 
-        index = x <= 400
-        x = x[index]
-        F_nu = F_nu[index]
-
-        fig, ax = plt.subplots()
-        for Delta_T in range(0, 105, 5):
-            T_m = 271  # K
-            Delta_H_m = 5.6  # kJ/mol
-            Delta_mu = - Delta_H_m / T_m * (Delta_T + 300 - T_m)
-            ax.plot(x, convert_unit(F_nu + Delta_mu * x, T=T_m - Delta_T), "o-",
-                            label=rf"${Delta_T}\ {{\rm K}}$")
-        ax.set_xlabel(rf"$\lambda$")
-        ax.set_ylabel(r"$G(\lambda;\Delta T)$")
+        title = fr"Free Energy Profile at Different $\Delta T$ (Zoomed In)"
+        x_label = fr"$\lambda$"
+        y_label = fr"$G(\lambda;\Delta T)$"
+        fig, ax = create_fig_ax(title, x_label, y_label)
         ax.tick_params(axis='y')
+        for Delta_T in range(0, 105, 5):
+            T = T_m - Delta_T
+            Delta_mu = - Delta_H_m / T_m * (Delta_T + T_sim - T_m)
+            label = fr"${Delta_T}\ {{\rm K}}$"
+            x_range = [0, 400]
+            self.plot_free_energy_plot_line(ax, delta_mu=Delta_mu, T=T, label=label, x_range=x_range)
 
-        # lines = [line1[0]]
-        # labels = [line.get_label() for line in lines]
         ax.legend()
-        plt.title(rf"Free Energy Profile at Different $\Delta T$ (Zoomed In)")
-        if save_fig:
-            save_dir.mkdir(exist_ok=True)
-            save_path = save_dir / f"SparseSampling_{column_name}_DeltaT_zoomed_in.png"
-            plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-            print(f"Saved the figure to {save_path.resolve()}")
-        else:
-            plt.show()
+        save_path = save_dir / f"sparse_sampling_DeltaT_zoomed_in.png"
+        save_figure(fig, save_path)
         plt.close(fig)
 
     def plot_debug(self, save_fig: bool = True, save_dir=Path("./figure")):
