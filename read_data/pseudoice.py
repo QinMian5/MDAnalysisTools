@@ -18,19 +18,21 @@ from sparse_sampling import SparseSampling
 _filename_job_params = "job_params.json"
 _filename_index = "solid_like_atoms.index"
 _filename_index2 = "solid_like_atoms_with_PI.index"
+_filename_index3 = "solid_like_atoms_chillplus.index"
+_filename_index4 = "solid_like_atoms_corrected.index"
 _filename_lambda_q = "lambda_q.json"
 
 
-def _load_params(rho) -> dict:
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result")
+def _load_params(rho, process) -> dict:
+    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
     with open(data_dir / _filename_job_params, 'r') as file:
         job_params = json.load(file)
     return job_params
 
 
-def read_data(rho, t_start=2000) -> OPDataset:
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result")
-    job_params = _load_params(rho)
+def read_data(rho, process, t_start=2200) -> OPDataset:
+    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
+    job_params = _load_params(rho, process)
 
     dataset: OPDataset = load_dataset(
         data_dir=data_dir,
@@ -62,9 +64,9 @@ def get_qbar_from_dataset(dataset: OPDataset) -> dict[str, pd.DataFrame]:
     return q_dict
 
 
-def read_lambda(rho, filename=_filename_index, column_name="lambda") -> dict[str, pd.DataFrame]:
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result")
-    job_params = _load_params(rho)
+def read_lambda(rho, process, filename=_filename_index, column_name="lambda") -> dict[str, pd.DataFrame]:
+    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
+    job_params = _load_params(rho, process)
 
     lambda_dict: dict[str, pd.DataFrame] = {}
     for job_name in job_params:
@@ -127,27 +129,30 @@ def plot_all_debug_in_one():
     print(f"Saved the figure to {save_path.resolve()}")
 
 
-def calc_plot_save(rho):
-    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting") / "figure"
+def calc_plot_save(rho, process):
+    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}") / "figure"
     op = "QBAR"
-    dataset = read_data(rho)
+    dataset = read_data(rho, process)
     eda = EDA(dataset, op, figure_save_dir)
+    # eda.load_result(figure_save_dir)
+    eda.plot_op(save_dir=figure_save_dir)
+    eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
     eda.calculate()
     eda.plot_autocorr(save_dir=figure_save_dir)
-    eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
     eda.save_result(save_dir=figure_save_dir)
     tau_dict = eda.tau_dict
     dataset.update_autocorr_time(tau_dict)
     ss = SparseSampling(dataset, op)
     ss.calculate()
-    ss.plot(save_dir=figure_save_dir, delta_mu=-0.24)
+    ss.plot(save_dir=figure_save_dir, delta_mu=0.0)
+    ss.plot_different_DeltaT(save_dir=figure_save_dir)
     ss.plot_debug(save_dir=figure_save_dir)
     ss.save_result(save_dir=figure_save_dir)
 
 
-def calc_difference(rho):
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result")
-    job_params = _load_params(rho)
+def calc_difference(rho, process):
+    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
+    job_params = _load_params(rho, process)
 
     solid_like_atoms_dict: dict[str, dict[str, list[str]]] = {}
     solid_like_atoms_with_PI_dict: dict[str, dict[str, list[str]]] = {}
@@ -171,13 +176,13 @@ def calc_difference(rho):
                     index_less_file.write(f"{t} {' '.join(list(sorted(index_less)))}\n")
 
 
-def calc_plot_lambda_q(rho):
-    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting") / "figure"
-    dataset = read_data(rho)
+def calc_plot_lambda_q(rho, process):
+    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}") / "figure"
+    dataset = read_data(rho, process)
     qbar_dict = get_qbar_from_dataset(dataset)
     q_dict = read_lambda(rho, _filename_index, column_name="q")
-    lambda_dict = read_lambda(rho, _filename_index2, column_name="lambda")
-    job_params = _load_params(rho)
+    lambda_dict = read_lambda(rho, _filename_index4, column_name="lambda")
+    job_params = _load_params(rho, process)
 
     qbar_star_list = []
     qbar_avg_list = []
@@ -286,13 +291,11 @@ def plot_g_lambda(rho):
 
 
 def main():
-    # calc_plot_save(1.0)
-    for rho in [0.0, 0.25, 0.5, 0.75, 1.0]:
-        calc_plot_save(rho)
+    process = "icing_250"
+    for rho in [0.75]:
+        calc_plot_save(rho, process)
         # calc_plot_lambda_q(rho)
         # plot_g_lambda(rho)
-    # plot_all_in_one()
-    # plot_all_debug_in_one()
 
 
 if __name__ == "__main__":

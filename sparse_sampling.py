@@ -145,7 +145,7 @@ class SparseSampling:
         self._calculate_U_lambda()
         self._calculate_F_nu()
         self._calculate_energy()
-        self._calculate_dF_nu_dx()
+        # self._calculate_dF_nu_dx()
 
     def plot(self, save_fig: bool = True, save_dir=Path("./figure"), delta_mu=0.0):
         plt.style.use("presentation.mplstyle")
@@ -161,11 +161,68 @@ class SparseSampling:
         # lines = [line1[0]]
         # labels = [line.get_label() for line in lines]
         # ax.legend(lines, labels)
-
         plt.title(rf"Sparse Sampling, $\Delta\mu = {delta_mu} k_BT$")
         if save_fig:
             save_dir.mkdir(exist_ok=True)
             save_path = save_dir / f"SparseSampling_{column_name}.png"
+            plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
+            print(f"Saved the figure to {save_path.resolve()}")
+        else:
+            plt.show()
+        plt.close(fig)
+
+    def plot_different_DeltaT(self, save_fig: bool = True, save_dir=Path("./figure")):
+        plt.style.use("presentation.mplstyle")
+        column_name = self.op
+        x = self.x
+        F_nu = self.F_nu
+
+        fig, ax = plt.subplots()
+        ax.plot(x, convert_unit(F_nu), "o-", label=r"Raw data (at $300\ \mathrm{K}$)")
+        for Delta_T in range(0, 105, 10):
+            T_m = 271  # K
+            Delta_H_m = 5.6  # kJ/mol
+            Delta_mu = - Delta_H_m / T_m * (Delta_T + 300 - T_m)
+            ax.plot(x, convert_unit(F_nu + Delta_mu * x, T=T_m-Delta_T), "o-", label=rf"${Delta_T}\ \mathrm{{K}}$")
+        ax.set_xlabel(rf"$\lambda$")
+        ax.set_ylabel(r"$G(\lambda;\Delta T)$")
+        ax.tick_params(axis='y')
+
+        # lines = [line1[0]]
+        # labels = [line.get_label() for line in lines]
+        ax.legend()
+        plt.title(rf"Free Energy Profile at Different $\Delta T$")
+        if save_fig:
+            save_dir.mkdir(exist_ok=True)
+            save_path = save_dir / f"SparseSampling_{column_name}_DeltaT.png"
+            plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
+            print(f"Saved the figure to {save_path.resolve()}")
+        else:
+            plt.show()
+        plt.close(fig)
+
+        index = x <= 400
+        x = x[index]
+        F_nu = F_nu[index]
+
+        fig, ax = plt.subplots()
+        for Delta_T in range(0, 105, 5):
+            T_m = 271  # K
+            Delta_H_m = 5.6  # kJ/mol
+            Delta_mu = - Delta_H_m / T_m * (Delta_T + 300 - T_m)
+            ax.plot(x, convert_unit(F_nu + Delta_mu * x, T=T_m - Delta_T), "o-",
+                            label=rf"${Delta_T}\ {{\rm K}}$")
+        ax.set_xlabel(rf"$\lambda$")
+        ax.set_ylabel(r"$G(\lambda;\Delta T)$")
+        ax.tick_params(axis='y')
+
+        # lines = [line1[0]]
+        # labels = [line.get_label() for line in lines]
+        ax.legend()
+        plt.title(rf"Free Energy Profile at Different $\Delta T$ (Zoomed In)")
+        if save_fig:
+            save_dir.mkdir(exist_ok=True)
+            save_path = save_dir / f"SparseSampling_{column_name}_DeltaT_zoomed_in.png"
             plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
             print(f"Saved the figure to {save_path.resolve()}")
         else:

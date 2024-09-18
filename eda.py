@@ -17,10 +17,10 @@ from op_dataset import OPDataset
 class EDA:
     result_filename = "autocorr_time.json"
 
-    def __init__(self, dataset: OPDataset, op, fig_save_dir=Path("./figure")):
+    def __init__(self, dataset: OPDataset, op, save_dir=Path("./figure")):
         self.dataset = dataset
         self.op = op
-        self.fig_save_dir = fig_save_dir
+        self.save_dir = save_dir
         self.autocorr_func_dict: dict[str, np.ndarray]
         self.autocorr_time_dict: dict[str, list[float]]
 
@@ -28,7 +28,7 @@ class EDA:
     def tau_dict(self):
         tau_dict = {}
         for job_name, (tau_cross, tau_int, tau_fit) in self.autocorr_time_dict.items():
-            tau = tau_fit
+            tau = np.mean([tau_cross, tau_int, tau_fit])
             tau_dict[job_name] = tau
         return tau_dict
 
@@ -43,30 +43,35 @@ class EDA:
             df = data.df
             values = df[op].values
             autocorr_func = acf(values, nlags=len(df), fft=True)
+            autocorr_func = autocorr_func[1:]
+            autocorr_func /= autocorr_func[0]
             autocorr_dict[job_name] = autocorr_func
         self.autocorr_func_dict = autocorr_dict
 
     def _calc_autocorr_time(self):
+        figure_save_dir = self.save_dir / "autocorr_func_detail"
         op = self.op
         tau_dict = {}
+        cross_threshold = 1 / np.e
         for job_name, autocorr_func in self.autocorr_func_dict.items():
             # Find the first intersection with the x-axis
-            for i in range(len(autocorr_func) - 1):
-                x1, x2 = autocorr_func[i:i + 2]
-                if x1 > 0 > x2 or x1 < 0 < x2:
+            smoothed_acf = gaussian_filter1d(autocorr_func, sigma=5)
+            for i in range(len(smoothed_acf) - 1):
+                x1, x2 = smoothed_acf[i:i + 2]
+                if x1 > cross_threshold > x2 or x1 < cross_threshold < x2:
                     tau_cross = i + np.abs(x1) / (np.abs(x1) + np.abs(x2))
                     break
             else:
                 raise RuntimeError("ACF has no intersection with the x-axis")
 
+            first_negative = np.where(autocorr_func <= 0)[0][0]
             tau_int: float = simpson(autocorr_func[:int(tau_cross / 0.618)])
-
-            if tau_cross < 10:
+            if first_negative < 10:
                 tau_fit = tau_cross
             else:
                 t = self.dataset[job_name].df["t"].values
                 t = t - t[0]
-                n_positive = int(tau_cross)
+                n_positive = int(first_negative)
                 x = t[:n_positive]
                 log_acf = np.log(autocorr_func[:n_positive])
                 p, index = find_best_line(x, log_acf)
@@ -82,11 +87,13 @@ class EDA:
                 ax.plot(x_match, y_match, "ro", alpha=0.25)
                 ax.plot(x_line, y_line, "r-", label=rf"$y={k:.4}x+{b:.4}$")
                 ax.legend()
-                ax.set_title(rf"Log of ACF for {op}, $\tau = {tau_fit:.2f}$ ps")
+                ax.set_title(rf"Log of ACF of {op} for {job_name}, $\tau = {tau_fit:.2f}$ ps")
+                # ax.set_title(rf"Log of ACF of {op} for {job_name}")
                 ax.set_xlabel("$t$(ps)")
                 ax.set_ylabel(r"$\log$ ACF")
 
-                save_path = self.fig_save_dir / "autocorr_func_detail" / f"log_ACF_{op}_{job_name}.png"
+                figure_save_dir.mkdir(parents=True, exist_ok=True)
+                save_path = figure_save_dir / f"log_ACF_{op}_{job_name}.png"
                 plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
                 print(f"Saved the figure to {save_path.resolve()}")
                 plt.close(fig)
@@ -95,6 +102,34 @@ class EDA:
 
             tau_dict[job_name] = [tau_cross, tau_int, tau_fit]
         self.autocorr_time_dict = tau_dict
+
+    def plot_op(self, save_fig=True, save_dir=Path("./figure")):
+        figure_save_dir = save_dir / "autocorr_func_detail"
+        op = self.op
+        plt.style.use("presentation.mplstyle")
+        for job_name, data in self.dataset.items():
+            df = data.initial_df
+            x = df["t"].values
+            y = df[op].values
+            y_smooth = gaussian_filter1d(y, sigma=10)
+
+            fig, ax = plt.subplots()
+            ax.set_title("Order Parameters as a Function of $t$")
+            ax.set_xlabel("$t$(ps)")
+            ax.set_ylabel(f"{op}")
+
+            ax.plot(x, y, "b-")
+            ax.plot(x, y_smooth, "r--", label="Smoothed")
+            ax.legend()
+
+            if save_fig:
+                figure_save_dir.mkdir(parents=True, exist_ok=True)
+                save_path = figure_save_dir / f"op_{op}_{job_name}.png"
+                plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
+                print(f"Saved the figure to {save_path.resolve()}")
+            else:
+                plt.show()
+            plt.close(fig)
 
     def plot_autocorr(self, save_fig=True, save_dir=Path("./figure")):
         """
@@ -120,6 +155,7 @@ class EDA:
         for job_name, color in zip(autocorr_func_dict, colors):
             autocorr_func = autocorr_func_dict[job_name]
             t = self.dataset[job_name].df["t"].values
+            t = t[:len(autocorr_func)]
             t = t - t[0]
             line = ax.plot(t, autocorr_func, "-", color=color, label=job_name)
             lines.append(line[0])
@@ -143,17 +179,21 @@ class EDA:
             autocorr_func = autocorr_func_dict[job_name]
             autocorr_time = autocorr_time_dict[job_name]
             tau_cross, tau_int, tau_fit = autocorr_time
+            tau = np.mean([tau_cross, tau_int, tau_fit])
             fig, ax = plt.subplots()
-            ax.set_title(rf"ACF of {op} for {job_name}, $\tau = {tau_fit:.2f}$ ps")
+            ax.set_title(rf"ACF of {op} for {job_name}, $\bar\tau = {tau:.2f}$ ps")
             ax.set_xlabel("$t$(ps)")
             ax.set_ylabel("ACF")
             t = self.dataset[job_name].df["t"].values
+            t = t[:len(autocorr_func)]
             t = t - t[0]
-            index = slice(0, int(np.ceil(tau_cross / 0.618)))
+            index = slice(0, int(np.ceil(3 * tau)))
             x, y = t[index], autocorr_func[index]
             ax.plot([x.min(), x.max()], [0, 0], "--", color="black")
-            ax.plot(x, y, "b-", label=rf"$\tau_{{int}} = {tau_int:.2f}$ ps")
-            ax.plot(tau_cross, 0, "ro", label=rf"$\tau_x = {tau_cross:.2f}$ ps")
+            ax.plot(x, y, "b-")
+            ax.plot(tau_cross, 0, "ro", label=rf"$\tau_{{cross}} = {tau_cross:.2f}$ ps")
+            ax.plot(tau_int, 0, "go", label=rf"$\tau_{{int}} = {tau_int:.2f}$ ps")
+            ax.plot(tau_fit, 0, "bo", label=rf"$\tau_{{fit}} = {tau_fit:.2f}$ ps")
             ax.legend()
             if save_fig:
                 save_path = detail_save_dir / f"autocorr_func_{op}_{job_name}.png"
@@ -296,11 +336,11 @@ class EDA:
 
 
 def find_best_line(x_array: np.ndarray, y_array: np.ndarray):
-    min_length = 10
+    min_length = int(len(y_array) / 10)
     candidate_list = []
-    for i_start in range(1, 5):
+    max_start = min(int(len(y_array) / 20 + 1), 10)
+    for i_start in range(max_start):
         not_line_counter = 0
-        max_not_line = 5
         for i_end in range(i_start + min_length, len(x_array)):
             index = np.arange(i_start, i_end + 1)
             x = x_array[index]
@@ -311,7 +351,7 @@ def find_best_line(x_array: np.ndarray, y_array: np.ndarray):
             above = y > y_connect
             if not (0.1 < np.mean(above) < 0.9):  # not a line
                 not_line_counter += 1
-                if not_line_counter >= max_not_line:
+                if not_line_counter >= 3:
                     break
                 continue
             else:

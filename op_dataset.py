@@ -11,13 +11,13 @@ class OPData:
     def __init__(self, data: pd.DataFrame, params: dict):
         self._T = None
         self._beta = None
+        self._drop_before = 0
         self._df: pd.DataFrame = data
         t = self._df["t"].values
         time_step = np.mean(t[1:] - t[:-1])
         self._time_step = time_step
         self._autocorr_time: float | None = None  # In units of index
         self._independent_samples: int | None = None
-        self.df = self._df.copy()
         self.params = params
         self.T = params["TEMPERATURE"]
 
@@ -35,13 +35,21 @@ class OPData:
         return self._beta
 
     @property
+    def df(self):
+        return self._df[self._df["t"] >= self._drop_before].copy()
+
+    @property
+    def initial_df(self):
+        return self._df.copy()
+
+    @property
     def autocorr_time(self):
         return self._autocorr_time
 
     @autocorr_time.setter
     def autocorr_time(self, value: float):
         self._autocorr_time = value
-        N = len(self._df)
+        N = len(self.df)
         self._independent_samples = int(np.ceil(N / self._autocorr_time))
 
     @property
@@ -53,21 +61,7 @@ class OPData:
         return self._time_step
 
     def drop_before(self, t: int | float):
-        new_df = self._df[self._df["t"] >= t].copy()
-        # new_df["t"] = new_df["t"] - t
-        self._df = new_df
-        self.df = self
-        self.df = self._df
-
-    # def resample(self, n=None, replace=True):
-    #     if n is None:
-    #         if self._independent_samples is None:
-    #             raise ValueError("Auto-correlation time must be set before sampling.")
-    #         n = self._independent_samples
-    #     self.df = self._df.sample(n, replace=replace, axis=0)
-    #
-    # def restore(self):
-    #     self.df = self._df.copy()
+        self._drop_before = t
 
     def calculate_bias_potential(self, coordinates: dict[str, float | np.ndarray]) -> float | np.ndarray:
         """
