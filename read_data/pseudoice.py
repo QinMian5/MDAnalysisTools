@@ -11,6 +11,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import pearsonr
 
 from utils import load_dataset, convert_unit, read_solid_like_atoms
+from utils_plot import create_fig_ax, save_figure
 from op_dataset import OPDataset
 from eda import EDA
 from sparse_sampling import SparseSampling
@@ -139,41 +140,15 @@ def calc_plot_save(rho, process):
     eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
     eda.calculate()
     eda.plot_autocorr(save_dir=figure_save_dir)
-    eda.save_result(save_dir=figure_save_dir)
-    tau_dict = eda.tau_dict
-    dataset.update_autocorr_time(tau_dict)
+    # eda.save_result(save_dir=figure_save_dir)
+    # tau_dict = eda.tau_dict
+    # dataset.update_autocorr_time(tau_dict)
     ss = SparseSampling(dataset, op)
     ss.calculate()
-    ss.plot(save_dir=figure_save_dir, delta_mu=0.0)
+    ss.plot_free_energy(save_dir=figure_save_dir)
     ss.plot_different_DeltaT(save_dir=figure_save_dir)
-    ss.plot_debug(save_dir=figure_save_dir)
+    # ss.plot_debug(save_dir=figure_save_dir)
     ss.save_result(save_dir=figure_save_dir)
-
-
-def calc_difference(rho, process):
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
-    job_params = _load_params(rho, process)
-
-    solid_like_atoms_dict: dict[str, dict[str, list[str]]] = {}
-    solid_like_atoms_with_PI_dict: dict[str, dict[str, list[str]]] = {}
-    for job_name in job_params:
-        filepath = data_dir / job_name / _filename_index
-        solid_like_atoms_dict[job_name] = filter_solid_like_atoms(read_solid_like_atoms(filepath))
-        filepath2 = data_dir / job_name / _filename_index2
-        solid_like_atoms_with_PI_dict[job_name] = filter_solid_like_atoms(read_solid_like_atoms(filepath2))
-
-    for job_name in job_params:
-        path_debug_dir = data_dir / job_name / "debug"
-        path_debug_dir.mkdir(exist_ok=True)
-        with open(path_debug_dir / "more.index", 'w') as index_more_file:
-            with open(path_debug_dir / "less.index", 'w') as index_less_file:
-                for t in solid_like_atoms_dict[job_name]:
-                    set1 = set(solid_like_atoms_dict[job_name][t])
-                    set2 = set(solid_like_atoms_with_PI_dict[job_name][t])
-                    index_more = set2 - set1
-                    index_less = set1 - set2
-                    index_more_file.write(f"{t} {' '.join(list(sorted(index_more)))}\n")
-                    index_less_file.write(f"{t} {' '.join(list(sorted(index_less)))}\n")
 
 
 def calc_plot_lambda_q(rho, process):
@@ -290,12 +265,37 @@ def plot_g_lambda(rho):
     plt.close(fig)
 
 
+def compare_melting_icing(rho):
+    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice") / "figure"
+
+    op = "QBAR"
+    process_list = ["melting", "icing"]
+    ss_list = []
+    for process in process_list:
+        dataset = read_data(rho, process)
+        ss = SparseSampling(dataset, op)
+        ss.calculate()
+        ss_list.append(ss)
+
+    title = fr"Comparison of Free Energy, $\alpha = {rho}$"
+    x_label = "qbar"
+    y_label = fr"$\beta F$"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+    for process, ss in zip(process_list, ss_list):
+        ss.plot_free_energy_plot_line(ax, label=process)
+    ax.legend()
+    save_path = figure_save_dir / f"comparison_{rho}.png"
+    save_figure(fig, save_path)
+
+
 def main():
-    process = "icing_250"
+    process = "icing_300_long_ramp"
     for rho in [0.75]:
         calc_plot_save(rho, process)
         # calc_plot_lambda_q(rho)
         # plot_g_lambda(rho)
+
+        # compare_melting_icing(rho)
 
 
 if __name__ == "__main__":

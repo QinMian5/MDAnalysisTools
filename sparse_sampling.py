@@ -149,6 +149,8 @@ class SparseSampling:
         # self._calculate_dF_nu_dx()
 
     def plot_free_energy_plot_line(self, ax, delta_mu=None, T=None, label=None, x_range=None):
+        if delta_mu is None:
+            delta_mu = 0
         x = self.x
         F_nu = self.F_nu
         if x_range is not None:
@@ -161,7 +163,10 @@ class SparseSampling:
 
     def plot_free_energy(self, save_dir=Path("./figure")):
         op = self.op
-        fig, ax = create_fig_ax(f"Free Energy", f"{op}", fr"$\beta F$")
+        title = "Free Energy"
+        x_label = f"{op}"
+        y_label = fr"$\beta F$"
+        fig, ax = create_fig_ax(title, x_label, y_label)
         ax.tick_params(axis='y')
         self.plot_free_energy_plot_line(ax)
 

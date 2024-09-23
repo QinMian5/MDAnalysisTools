@@ -34,7 +34,7 @@ class EDA:
 
     def calculate(self):
         self._calc_autocorr_func()
-        self._calc_autocorr_time()
+        # self._calc_autocorr_time()
 
     def _calc_autocorr_func(self):
         op = self.op
@@ -43,8 +43,7 @@ class EDA:
             df = data.df
             values = df[op].values
             autocorr_func = acf(values, nlags=len(df), fft=True)
-            autocorr_func = autocorr_func[1:]
-            autocorr_func /= autocorr_func[0]
+            autocorr_func = autocorr_func
             autocorr_dict[job_name] = autocorr_func
         self.autocorr_func_dict = autocorr_dict
 
@@ -142,7 +141,7 @@ class EDA:
         op = self.op
         plt.style.use("presentation.mplstyle")
         autocorr_func_dict = self.autocorr_func_dict
-        autocorr_time_dict = self.autocorr_time_dict
+        # autocorr_time_dict = self.autocorr_time_dict
         colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, len(autocorr_func_dict)))
 
         # Plot all ACF in one plot
@@ -172,57 +171,57 @@ class EDA:
             plt.show()
         plt.close(fig)
 
-        # Plot each ACF
-        detail_save_dir = save_dir / "autocorr_func_detail"
-        detail_save_dir.mkdir(parents=True, exist_ok=True)
-        for job_name in autocorr_func_dict:
-            autocorr_func = autocorr_func_dict[job_name]
-            autocorr_time = autocorr_time_dict[job_name]
-            tau_cross, tau_int, tau_fit = autocorr_time
-            tau = np.mean([tau_cross, tau_int, tau_fit])
-            fig, ax = plt.subplots()
-            ax.set_title(rf"ACF of {op} for {job_name}, $\bar\tau = {tau:.2f}$ ps")
-            ax.set_xlabel("$t$(ps)")
-            ax.set_ylabel("ACF")
-            t = self.dataset[job_name].df["t"].values
-            t = t[:len(autocorr_func)]
-            t = t - t[0]
-            index = slice(0, int(np.ceil(3 * tau)))
-            x, y = t[index], autocorr_func[index]
-            ax.plot([x.min(), x.max()], [0, 0], "--", color="black")
-            ax.plot(x, y, "b-")
-            ax.plot(tau_cross, 0, "ro", label=rf"$\tau_{{cross}} = {tau_cross:.2f}$ ps")
-            ax.plot(tau_int, 0, "go", label=rf"$\tau_{{int}} = {tau_int:.2f}$ ps")
-            ax.plot(tau_fit, 0, "bo", label=rf"$\tau_{{fit}} = {tau_fit:.2f}$ ps")
-            ax.legend()
-            if save_fig:
-                save_path = detail_save_dir / f"autocorr_func_{op}_{job_name}.png"
-                plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-                print(f"Saved the figure to {save_path.resolve()}")
-            else:
-                plt.show()
-            plt.close(fig)
-
-        # Plot ACT
-        fig, ax = plt.subplots()
-        ax.set_title(f"Autocorrelation Time (ACT) of {op}")
-        # ax.set_xlabel("")
-        ax.set_ylabel("$t$(ps)")
-
-        job_names = self.tau_dict.keys()
-        autocorr_times = self.tau_dict.values()
-
-        ax.bar(job_names, autocorr_times)
-        plt.xticks(rotation=90)
-
-        if save_fig:
-            save_dir.mkdir(parents=True, exist_ok=True)
-            save_path = save_dir / f"autocorr_time_{op}.png"
-            plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-            print(f"Saved the figure to {save_path.resolve()}")
-        else:
-            plt.show()
-        plt.close(fig)
+        # # Plot each ACF
+        # detail_save_dir = save_dir / "autocorr_func_detail"
+        # detail_save_dir.mkdir(parents=True, exist_ok=True)
+        # for job_name in autocorr_func_dict:
+        #     autocorr_func = autocorr_func_dict[job_name]
+        #     autocorr_time = autocorr_time_dict[job_name]
+        #     tau_cross, tau_int, tau_fit = autocorr_time
+        #     tau = np.mean([tau_cross, tau_int, tau_fit])
+        #     fig, ax = plt.subplots()
+        #     ax.set_title(rf"ACF of {op} for {job_name}, $\bar\tau = {tau:.2f}$ ps")
+        #     ax.set_xlabel("$t$(ps)")
+        #     ax.set_ylabel("ACF")
+        #     t = self.dataset[job_name].df["t"].values
+        #     t = t[:len(autocorr_func)]
+        #     t = t - t[0]
+        #     index = slice(0, int(np.ceil(3 * tau)))
+        #     x, y = t[index], autocorr_func[index]
+        #     ax.plot([x.min(), x.max()], [0, 0], "--", color="black")
+        #     ax.plot(x, y, "b-")
+        #     ax.plot(tau_cross, 0, "ro", label=rf"$\tau_{{cross}} = {tau_cross:.2f}$ ps")
+        #     ax.plot(tau_int, 0, "go", label=rf"$\tau_{{int}} = {tau_int:.2f}$ ps")
+        #     ax.plot(tau_fit, 0, "bo", label=rf"$\tau_{{fit}} = {tau_fit:.2f}$ ps")
+        #     ax.legend()
+        #     if save_fig:
+        #         save_path = detail_save_dir / f"autocorr_func_{op}_{job_name}.png"
+        #         plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
+        #         print(f"Saved the figure to {save_path.resolve()}")
+        #     else:
+        #         plt.show()
+        #     plt.close(fig)
+        #
+        # # Plot ACT
+        # fig, ax = plt.subplots()
+        # ax.set_title(f"Autocorrelation Time (ACT) of {op}")
+        # # ax.set_xlabel("")
+        # ax.set_ylabel("$t$(ps)")
+        #
+        # job_names = self.tau_dict.keys()
+        # autocorr_times = self.tau_dict.values()
+        #
+        # ax.bar(job_names, autocorr_times)
+        # plt.xticks(rotation=90)
+        #
+        # if save_fig:
+        #     save_dir.mkdir(parents=True, exist_ok=True)
+        #     save_path = save_dir / f"autocorr_time_{op}.png"
+        #     plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
+        #     print(f"Saved the figure to {save_path.resolve()}")
+        # else:
+        #     plt.show()
+        # plt.close(fig)
 
     def plot_histogram(self, num_bins: int = None, bin_width: float = None,
                        bin_range: tuple[float, float] = None, save_fig=True, save_dir=Path("./figure")):
