@@ -20,6 +20,9 @@ class OPData:
         self._independent_samples: int | None = None
         self.params = params
         self.T = params["TEMPERATURE"]
+        self.ramp_time = params["RAMP_TIME"]
+        self.prd_time = params["PRD_TIME"]
+        self.drop_before(self.ramp_time + 200)
 
     @property
     def T(self):

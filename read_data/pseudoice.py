@@ -30,7 +30,7 @@ def _load_params(rho, process) -> dict:
     return job_params
 
 
-def read_data(rho, process, t_start=2200) -> OPDataset:
+def read_data(rho, process) -> OPDataset:
     data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
     job_params = _load_params(rho, process)
 
@@ -41,7 +41,6 @@ def read_data(rho, process, t_start=2200) -> OPDataset:
         column_types={"t": float, "QBAR": float, "box.N": int,
                       "box.Ntilde": float, "bias_qbar.value": float},
     )
-    dataset.drop_before(t_start)
     return dataset
 
 
@@ -144,7 +143,7 @@ def calc_plot_save(rho, process):
     dataset.update_autocorr_time(tau_dict)
     ss = SparseSampling(dataset, op)
     ss.calculate()
-    ss.plot(save_dir=figure_save_dir, delta_mu=0.0)
+    ss.plot_free_energy(save_dir=figure_save_dir)
     ss.plot_different_DeltaT(save_dir=figure_save_dir)
     ss.plot_debug(save_dir=figure_save_dir)
     ss.save_result(save_dir=figure_save_dir)
