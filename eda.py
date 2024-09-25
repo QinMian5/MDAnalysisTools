@@ -8,9 +8,11 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from scipy.integrate import simpson
 from scipy.ndimage import gaussian_filter1d
-from statsmodels.tsa.stattools import acf
+import statsmodels.tsa.stattools
+from uncertainties import unumpy as unp
 
 from utils import calculate_histogram_parameters
+from utils_plot import create_fig_ax, save_figure
 from op_dataset import OPDataset
 
 
@@ -21,8 +23,8 @@ class EDA:
         self.dataset = dataset
         self.op = op
         self.save_dir = save_dir
-        self.autocorr_func_dict: dict[str, np.ndarray]
-        self.autocorr_time_dict: dict[str, list[float]]
+        self.acf_dict: dict[str, np.ndarray] | None = None
+        self.autocorr_time_dict: dict[str, list[float]] | None = None
 
     @property
     def tau_dict(self):
@@ -33,26 +35,29 @@ class EDA:
         return tau_dict
 
     def calculate(self):
-        self._calc_autocorr_func()
+        self.__calc_autocorr_func()
         # self._calc_autocorr_time()
 
-    def _calc_autocorr_func(self):
+    def __calc_autocorr_func(self):
         op = self.op
-        autocorr_dict = {}
+        acf_dict = {}
         for job_name, data in self.dataset.items():
             df = data.df
             values = df[op].values
-            autocorr_func = acf(values, nlags=len(df), fft=True)
-            autocorr_func = autocorr_func
-            autocorr_dict[job_name] = autocorr_func
-        self.autocorr_func_dict = autocorr_dict
+            acf, confint = statsmodels.tsa.stattools.acf(values, nlags=len(df), fft=True, alpha=0.3173)  # Confidence interval: 1 sigma
+            sigma = (confint[:, 1] - confint[:, 0]) / 2
+            acf_u = unp.uarray(acf, sigma)
+            acf_dict[job_name] = acf_u
+        self.acf_dict = acf_dict
+
+    def __
 
     def _calc_autocorr_time(self):
         figure_save_dir = self.save_dir / "autocorr_func_detail"
         op = self.op
         tau_dict = {}
         cross_threshold = 1 / np.e
-        for job_name, autocorr_func in self.autocorr_func_dict.items():
+        for job_name, autocorr_func in self.acf_dict.items():
             # Find the first intersection with the x-axis
             smoothed_acf = gaussian_filter1d(autocorr_func, sigma=5)
             for i in range(len(smoothed_acf) - 1):
@@ -140,7 +145,7 @@ class EDA:
         """
         op = self.op
         plt.style.use("presentation.mplstyle")
-        autocorr_func_dict = self.autocorr_func_dict
+        autocorr_func_dict = self.acf_dict
         # autocorr_time_dict = self.autocorr_time_dict
         colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, len(autocorr_func_dict)))
 
