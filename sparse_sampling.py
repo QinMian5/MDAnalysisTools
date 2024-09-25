@@ -8,6 +8,7 @@ import scipy.constants as c
 from scipy.integrate import cumulative_simpson
 import pandas as pd
 import matplotlib.pyplot as plt
+from uncertainties import ufloat
 
 from utils import convert_unit
 from utils_plot import create_fig_ax, save_figure
@@ -20,7 +21,7 @@ class SparseSampling:
     def __init__(self, dataset: None | OPDataset, op: str):
         self.dataset = dataset
         self.op = op
-        self.x: np.ndarray | None = None
+        self.x: np.ndarray | None = None  # average x
         self.x_star: np.ndarray | None = None
         self.dF_lambda_dx_star: np.ndarray | None = None
         self.F_lambda: np.ndarray | None = None  # x_star
@@ -35,11 +36,11 @@ class SparseSampling:
     def dF_nu_dx(self):
         return self._dF_nu_dx, self._sigma_dF_nu_dx
 
-    def _calculate_x(self) -> None:
-        column_name = self.op
+    def __calculate_x(self) -> None:
+        op = self.op
         x_list = []
         for job_name, data in self.dataset.items():
-            op_values = data.df[column_name].values
+            op_values = data.df[op].values
             mean = op_values.mean()
             x_list.append(mean)
         self.x = np.array(x_list)
@@ -53,10 +54,10 @@ class SparseSampling:
             op_values = data.df[column_name].values
             assert params["TYPE"] in ["parabola"], f"Unknown bias potential type: {params['type']}"
             if params["TYPE"] == "parabola":
-                op_center = params["CENTER"]
+                op_star = params["STAR"]
                 kappa = params["KAPPA"]
-                dF_lambda_dx_star = kappa * (op_center - op_values.mean())
-                x_star_list.append(op_center)
+                dF_lambda_dx_star = kappa * (op_star - op_values.mean())
+                x_star_list.append(op_star)
                 df_lambda_dx_star_list.append(dF_lambda_dx_star)
         self.x_star = np.array(x_star_list)
         self.dF_lambda_dx_star = np.array(df_lambda_dx_star_list)
@@ -115,11 +116,11 @@ class SparseSampling:
             op_values = data.df[column_name].values
             assert params["TYPE"] in ["parabola"], f"Unknown bias potential type: {params['type']}"
             if params["TYPE"] == "parabola":
-                op_center = params["CENTER"]
+                op_star = params["STAR"]
                 kappa = params["KAPPA"]
                 dF_nu_lambda_dx = 0  # Assume x_mean is the equilibrium position
                 dF_nu_lambda_dx_list.append(dF_nu_lambda_dx)
-                dU_lambda_dx = kappa * (op_values.mean() - op_center)
+                dU_lambda_dx = kappa * (op_values.mean() - op_star)
                 dU_lambda_dx_list.append(dU_lambda_dx)
 
                 N_independent_samples = data.independent_samples

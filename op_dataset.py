@@ -87,7 +87,7 @@ class OPData:
             bias_type = self.params[variable]["TYPE"]
             if bias_type == "parabola":
                 kappa = self.params[variable]["KAPPA"]
-                center = self.params[variable]["CENTER"]
+                center = self.params[variable]["STAR"]
                 # bias_potential = 0.5 * kappa * (value - center) ** 2 * 1000 / c.N_A
                 bias_potential = 0.5 * kappa * (value - center) ** 2
                 total_bias_potential += bias_potential

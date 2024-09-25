@@ -159,7 +159,7 @@ class EDA:
             line = ax.plot(t, autocorr_func, "-", color=color, label=job_name)
             lines.append(line[0])
 
-        lines = [lines[0], lines[-1]]
+        # lines = [lines[0], lines[-1]]
         labels = [line.get_label() for line in lines]
         ax.legend(lines, labels)
         if save_fig:

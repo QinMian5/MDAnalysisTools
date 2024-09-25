@@ -25,7 +25,7 @@ _filename_lambda_q = "lambda_q.json"
 
 
 def _load_params(rho, process) -> dict:
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
+    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}")
     with open(data_dir / _filename_job_params, 'r') as file:
         job_params = json.load(file)
     return job_params
@@ -76,32 +76,6 @@ def read_lambda(rho, process, filename=_filename_index, column_name="lambda") ->
         lambda_ = [len(indices) for indices in solid_like_atoms_dict.values()]
         lambda_dict[job_name] = pd.DataFrame({"t": t, column_name: lambda_})
     return lambda_dict
-
-
-def plot_all_in_one():
-    plt.style.use("presentation.mplstyle")
-
-    op = "QBAR"
-    rho_list = ["0.0", "0.25", "0.5", "0.75", "1.0"]
-    delta_mu = -0.22
-    fig, ax = plt.subplots()
-    colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, len(rho_list)))
-    for rho, color in zip(rho_list, colors):
-        save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/figure")
-        ss = SparseSampling(None, op)
-        ss.load_result(save_dir=save_dir)
-        x, energy = ss.energy
-        ax.plot(x, convert_unit(energy) + delta_mu * x, "o-", color=color, label=rf"$\rho = {rho}$")
-    ax.set_title(rf"Free Energy Profile Variation with Polarity $(\rho)$, $\Delta\mu = {delta_mu} k_BT$")
-    ax.set_xlabel("Number of ice-like molecules")
-    ax.set_ylabel(r"$\beta F + \Delta\mu N$")
-    ax.legend()
-
-    save_dir = Path("/home/qinmian/data/gromacs/pseudoice/figure")
-    save_dir.mkdir(exist_ok=True)
-    save_path = save_dir / "energy_profile.png"
-    plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-    print(f"Saved the figure to {save_path.resolve()}")
 
 
 def plot_all_debug_in_one():
@@ -268,7 +242,7 @@ def compare_melting_icing(rho):
     figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice") / "figure"
 
     op = "QBAR"
-    process_list = ["melting", "icing"]
+    process_list = ["melting", "icing_300_long_ramp", "icing_300"]
     ss_list = []
     for process in process_list:
         dataset = read_data(rho, process)
@@ -290,11 +264,11 @@ def compare_melting_icing(rho):
 def main():
     process = "icing_300_long_ramp"
     for rho in [0.75]:
-        calc_plot_save(rho, process)
+        # calc_plot_save(rho, process)
         # calc_plot_lambda_q(rho)
         # plot_g_lambda(rho)
 
-        # compare_melting_icing(rho)
+        compare_melting_icing(rho)
 
 
 if __name__ == "__main__":
