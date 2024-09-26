@@ -7,8 +7,8 @@ import numpy as np
 import scipy.ndimage
 from scipy.interpolate import CubicSpline
 
-from utils import load_dataset, convert_unit
-from op_dataset import OPDataset
+from utils import convert_unit
+from op_dataset import OPDataset, load_dataset
 from eda import EDA
 from wham import BinlessWHAM
 from sparse_sampling import SparseSampling

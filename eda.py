@@ -6,7 +6,7 @@ import json
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
-from matplotlib.widgets import SpanSelector, Button
+from matplotlib.widgets import SpanSelector, Button, TextBox
 from scipy.integrate import simpson
 from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
@@ -26,6 +26,7 @@ class EDA:
         self.op = op
         self.save_dir = save_dir
         self.acf_dict: dict[str, unp.uarray] | None = None
+        self.act_dict: dict[str, float] | None = None
         self.autocorr_time_dict: dict[str, list[float]] | None = None
 
     @property
@@ -36,9 +37,8 @@ class EDA:
             tau_dict[job_name] = tau
         return tau_dict
 
-    def calculate(self):
+    def calculate_acf(self):
         self.__calc_autocorr_func()
-        # self._calc_autocorr_time()
 
     def __calc_autocorr_func(self):
         op = self.op
@@ -46,55 +46,51 @@ class EDA:
         for job_name, data in self.dataset.items():
             df = data.df
             values = df[op].values
-            acf, confint = statsmodels.tsa.stattools.acf(values, nlags=len(df), fft=True, alpha=0.3173)  # Confidence interval: 1 sigma
+            acf, confint = statsmodels.tsa.stattools.acf(values, nlags=len(df), fft=True,
+                                                         alpha=0.3173)  # Confidence interval: 1 sigma
             sigma = (confint[:, 1] - confint[:, 0]) / 2
             acf_u = unp.uarray(acf, sigma)
             acf_dict[job_name] = acf_u
         self.acf_dict = acf_dict
 
-    def __determine_autocorr_time(self):
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-
-        job_name_list, acf_list = zip(*self.acf_dict.items())
-        num_datasets = len(job_name_list)
-        index = [0]
-
-        def plot_data(index):
-            job_name = job_name_list[index[0]]
-            acf_u = acf_list[index[0]]
+    def determine_autocorr_time(self, figure_save_dir=Path("./figure"), ignore_previous=True):
+        acf_dict = {}
+        for job_name, acf_u in self.acf_dict.items():
+            if ignore_previous and self.dataset[job_name].autocorr_time is not None:
+                continue
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
             t = self.dataset[job_name].df["t"].values
             t = t - t[0]
 
             plot_with_error_band(ax1, t, acf_u)
+            ax1.plot(t, np.zeros_like(t), "--", color="black")
             ax1.set_ylabel('ACF')
-            ax1.set_title('Autocorrelation Function')
-            ax1.legend()
-            ax1.grid(True)
+            ax1.set_title(f"Autocorrelation Function")
 
             acf = unp.nominal_values(acf_u)
             acf_err = unp.std_devs(acf_u)
-            with (np.errstate(divide='ignore', invalid='ignore')):
-                log_acf = np.log(np.abs(acf))
-                log_acf_err = acf_err / np.abs(acf)
-                log_acf_u = unp.uarray(log_acf, log_acf_err)
+            plot_until = np.where(acf < 1e-3)[0][0]
+            log_acf = np.log(acf[:plot_until])
+            log_acf_err = acf_err[:plot_until] / acf[:plot_until]
+            log_acf_u = unp.uarray(log_acf, log_acf_err)
             # Plot the log ACF
-            plot_with_error_band(ax2, t, log_acf_u)
+            plot_with_error_band(ax2, t[:plot_until], log_acf_u)
             ax2.set_xlabel('Lag time (τ)')
             ax2.set_ylabel('Log ACF')
-            ax2.set_title('Log of Autocorrelation Function')
-            ax2.legend()
-            ax2.grid(True)
+            ax2.set_title("Log of Autocorrelation Function")
 
-            fit_line = ax2.plot([], [], "r-")
-            exp_fit_line = ax1.plot([], [], "r-")
+            fit_line = ax2.plot([], [], "r-")[0]
+            exp_fit_line = ax1.plot([], [], "r-")[0]
+            act_line = ax1.plot([], [], "r--")[0]
+
+            text_box_ax = fig.add_axes((0.2, 0.01, 0.1, 0.05))
+            text_box = TextBox(text_box_ax, label="ACT")
+
+            temp_act = [0]
 
             def onselect(xmin, xmax):
                 # Extract the indices of the selected data range
                 indmin, indmax = np.searchsorted(t, (xmin, xmax))
-                indmax = min(len(t) - 1, indmax)
-                if indmax - indmin < 5:
-                    fig.canvas.draw_idle()
-                    return
 
                 # Extract selected data
                 t_sel = t[indmin:indmax]
@@ -103,33 +99,71 @@ class EDA:
                 # Weigh the fit by the inverse of the variances
                 p = np.polyfit(t_sel, log_acf_sel, 1)
 
+                k, b = p
+                act = -1 / k
+                temp_act[0] = act
+
+                result = f"{act:.3} ps"
+                text_box.set_val(result)
+
                 # Plot the fitted curve on ax1
                 y_fit = np.polyval(p, t_sel)
                 exp_y_fit = np.exp(y_fit)
                 fit_line.set_data(t_sel, y_fit)
                 exp_fit_line.set_data(t_sel, exp_y_fit)
+                act_line.set_data([act, act], [-1, 1])
                 fig.canvas.draw_idle()
 
-            span = SpanSelector(ax2, onselect, "horizontal", useblit=True)
+            span = SpanSelector(ax2, onselect, "horizontal", minspan=2, useblit=True, interactive=True,
+                                props={"facecolor": "red", "alpha": 0.2})
 
-            ax1.clear()
-            ax2.clear()
-            span.disconnect_events()
+            def on_auto_adjust(event):
+                margin_ratio = 0.1
+                margin_x = t[plot_until - 1] * margin_ratio
+                x_min = t[0] - margin_x
+                x_max = t[plot_until - 1] + margin_x
+                ax2.set_xlim(x_min, x_max)
+                margin_y = (log_acf.max() - log_acf.min()) * margin_ratio
+                y_min = log_acf.min() - margin_y
+                y_max = log_acf.max() + margin_y
+                ax2.set_ylim(y_min, y_max)
 
-        plot_data(index)
+            button_auto_adjust_ax = fig.add_axes((0.35, 0.01, 0.1, 0.05))
+            button_auto_adjust = Button(button_auto_adjust_ax, "Auto Adjust")
+            button_auto_adjust.on_clicked(on_auto_adjust)
 
-        button_ax = plt.axes((0.8, 0.01, 0.1, 0.05))
-        next_button = Button(button_ax, "Next")
+            def on_reset(event):
+                ax1.autoscale()
 
-        def on_next(event):
-            index[0] += 1
-            if index[0] >= num_datasets:
-                plt.close(fig)  # 关闭图形窗口
-                return
-            plot_data(index)
+            button_reset_ax = fig.add_axes((0.5, 0.01, 0.1, 0.05))
+            button_reset = Button(button_reset_ax, "Reset")
+            button_reset.on_clicked(on_reset)
 
-        next_button.on_clicked(on_next)
-        plt.show()
+            def on_next(event):
+                acf_dict[job_name] = temp_act[0]
+                save_figure(fig, figure_save_dir / f"acf_detail/acf_{job_name}.png")
+                exit_flag[0] = False
+                plt.close(fig)
+
+            exit_flag = [True]
+            button_next_ax = fig.add_axes((0.65, 0.01, 0.1, 0.05))
+            button_next = Button(button_next_ax, "Save&Next")
+            button_next.on_clicked(on_next)
+
+            def on_exit(event):
+                plt.close(fig)
+
+            button_exit_ax = fig.add_axes((0.8, 0.01, 0.1, 0.05))
+            button_exit = Button(button_exit_ax, "Exit")
+            button_exit.on_clicked(on_exit)
+
+            plt.show()
+            if exit_flag[0]:
+                break
+            else:
+                continue
+        self.dataset.update_autocorr_time(acf_dict)
+        self.dataset.save_act()
 
     def plot_op(self, save_fig=True, save_dir=Path("./figure")):
         figure_save_dir = save_dir / "autocorr_func_detail"
@@ -254,43 +288,6 @@ class EDA:
         save_path = save_dir / self.result_filename
         with open(save_path, 'r') as file:
             self.autocorr_time_dict = json.load(file)
-
-
-def find_best_line(x_array: np.ndarray, y_array: np.ndarray):
-    min_length = int(len(y_array) / 10)
-    candidate_list = []
-    max_start = min(int(len(y_array) / 20 + 1), 10)
-    for i_start in range(max_start):
-        not_line_counter = 0
-        for i_end in range(i_start + min_length, len(x_array)):
-            index = np.arange(i_start, i_end + 1)
-            x = x_array[index]
-            y = y_array[index]
-            k_connect = (y[-1] - y[0]) / (x[-1] - x[0])
-            b_connect = y[0] - k_connect * x[0]
-            y_connect = k_connect * x + b_connect
-            above = y > y_connect
-            if not (0.1 < np.mean(above) < 0.9):  # not a line
-                not_line_counter += 1
-                if not_line_counter >= 3:
-                    break
-                continue
-            else:
-                not_line_counter = 0
-
-            p = np.polyfit(x, y, 1)
-            if p[0] >= 0:
-                continue
-            y_fit = np.polyval(p, x)
-
-            y_diff = y - y_fit
-            mean_RSS = np.mean(y_diff ** 2)
-            length = i_end - i_start
-
-            candidate_list.append([mean_RSS, length, p, index])
-    candidate_list.sort(key=lambda x: np.log(x[0]) - 1.5 * np.log(x[1]))
-    mean_RSS, length, p, index = candidate_list[0]
-    return p, index
 
 
 def main():

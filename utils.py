@@ -4,38 +4,9 @@ from pathlib import Path
 from collections import OrderedDict
 
 import numpy as np
-import pandas as pd
 import scipy.constants as c
 
-from op_dataset import OPData, OPDataset
-
-
-def load_dataset(data_dir: [str, Path], job_params: dict[str, dict],
-                 column_names: list[str], column_types: dict[str, type]) -> OPDataset:
-    """
-
-    :param data_dir: Directory path containing data files.
-    :param job_params: Job parameters.
-    :param column_names: A list of strings specifying the column names of the data.
-    :param column_types: A dictionary specifying the data types (int, float, etc.) of columns.
-                         Only columns specified in column_types will be retained; all others will be disregarded.
-    :return: An instance of UmbrellaSamplingDataset that contains the simulation data.
-    """
-    dataset = OPDataset()
-    data_dir = Path(data_dir)
-
-    for job_name, params in job_params.items():
-        # Read the file into a DataFrame, using whitespace as delimiter
-        df = pd.read_csv(data_dir / job_name / "op.out", sep=r'\s+', header=None, names=column_names, comment='#')
-        # Keep only columns present in column_types and drop others
-        df = df.loc[:, df.columns.intersection(column_types.keys())]
-        # Convert the types of the columns as specified in column_types
-        for column_name, column_type in column_types.items():
-            df[column_name] = df[column_name].astype(column_type)
-
-        data = OPData(df, params)
-        dataset[job_name] = data
-    return dataset
+from op_dataset import OPDataset
 
 
 def read_solid_like_atoms(file_path: Path) -> dict[str, list[str]]:

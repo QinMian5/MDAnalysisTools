@@ -2,6 +2,7 @@
 # Date Created: 6/5/24
 from pathlib import Path
 import json
+import os
 
 import numpy as np
 import matplotlib as mpl
@@ -10,29 +11,38 @@ import pandas as pd
 from scipy.optimize import curve_fit
 from scipy.stats import pearsonr
 
-from utils import load_dataset, convert_unit, read_solid_like_atoms
+from utils import convert_unit, read_solid_like_atoms
 from utils_plot import create_fig_ax, save_figure
-from op_dataset import OPDataset
+from op_dataset import OPDataset, load_dataset
 from eda import EDA
 from sparse_sampling import SparseSampling
 
-_filename_job_params = "job_params.json"
 _filename_index = "solid_like_atoms.index"
 _filename_index2 = "solid_like_atoms_with_PI.index"
 _filename_index3 = "solid_like_atoms_chillplus.index"
 _filename_index4 = "solid_like_atoms_corrected.index"
 _filename_lambda_q = "lambda_q.json"
 
+run_env = os.environ.get("RUN_ENVIRONMENT")
+if run_env == "wsl":
+    home_path = Path("/home/qinmian")
+elif run_env == "chestnut":
+    home_path = Path("/home/mianqin")
+elif run_env == "mianqin_PC":
+    home_path = Path("//wsl.localhost/Ubuntu-22.04/home/qinmian")
+else:
+    raise RuntimeError(f"Unknown environment: {run_env}")
+
 
 def _load_params(rho, process) -> dict:
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}")
-    with open(data_dir / _filename_job_params, 'r') as file:
+    data_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}"
+    with open(data_dir / "job_params.json", 'r') as file:
         job_params = json.load(file)
     return job_params
 
 
 def read_data(rho, process) -> OPDataset:
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
+    data_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}/result"
     job_params = _load_params(rho, process)
 
     dataset: OPDataset = load_dataset(
@@ -65,7 +75,7 @@ def get_qbar_from_dataset(dataset: OPDataset) -> dict[str, pd.DataFrame]:
 
 
 def read_lambda(rho, process, filename=_filename_index, column_name="lambda") -> dict[str, pd.DataFrame]:
-    data_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}/result")
+    data_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}/result"
     job_params = _load_params(rho, process)
 
     lambda_dict: dict[str, pd.DataFrame] = {}
@@ -78,54 +88,30 @@ def read_lambda(rho, process, filename=_filename_index, column_name="lambda") ->
     return lambda_dict
 
 
-def plot_all_debug_in_one():
-    plt.style.use("presentation.mplstyle")
-
-    op = "QBAR"
-    rho_list = ["0.0", "0.25", "0.5", "0.75", "1.0"]
-    fig, ax = plt.subplots()
-    colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, len(rho_list)))
-    for rho, color in zip(rho_list, colors):
-        save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/result/figure")
-        ss = SparseSampling(None, op)
-        ss.load_result(save_dir=save_dir)
-        x_star, dF_lambda_dx_star = ss.dF_lambda_dx_star
-        ax.plot(x_star, convert_unit(dF_lambda_dx_star), "o-", color=color, label=rf"$\rho = {rho}$")
-    ax.set_title(rf"Sparse Sampling (Debug)")
-    ax.set_xlabel("$N^*$")
-    ax.set_ylabel(r"$\beta \frac{dF_{\lambda}}{d{N^*}}$")
-    ax.legend()
-
-    save_dir = Path("/home/qinmian/data/gromacs/pseudoice/figure")
-    save_dir.mkdir(exist_ok=True)
-    save_path = save_dir / "sparse_sampling_debug.png"
-    plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-    print(f"Saved the figure to {save_path.resolve()}")
-
-
 def calc_plot_save(rho, process):
-    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}") / "figure"
+    figure_save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}/figure"
     op = "QBAR"
     dataset = read_data(rho, process)
     eda = EDA(dataset, op, figure_save_dir)
     # eda.load_result(figure_save_dir)
-    eda.plot_op(save_dir=figure_save_dir)
-    eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
-    eda.calculate()
-    eda.plot_autocorr(save_dir=figure_save_dir)
+    # eda.plot_op(save_dir=figure_save_dir)
+    # eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
+    eda.calculate_acf()
+    eda.determine_autocorr_time(figure_save_dir, ignore_previous=True)
+    # eda.plot_autocorr(save_dir=figure_save_dir)
     # eda.save_result(save_dir=figure_save_dir)
     # tau_dict = eda.tau_dict
     # dataset.update_autocorr_time(tau_dict)
-    ss = SparseSampling(dataset, op)
-    ss.calculate()
-    ss.plot_free_energy(save_dir=figure_save_dir)
-    ss.plot_different_DeltaT(save_dir=figure_save_dir)
+    # ss = SparseSampling(dataset, op)
+    # ss.calculate()
+    # ss.plot_free_energy(save_dir=figure_save_dir)
+    # ss.plot_different_DeltaT(save_dir=figure_save_dir)
     # ss.plot_debug(save_dir=figure_save_dir)
-    ss.save_result(save_dir=figure_save_dir)
+    # ss.save_result(save_dir=figure_save_dir)
 
 
 def calc_plot_lambda_q(rho, process):
-    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/{process}") / "figure"
+    figure_save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}/figure"
     dataset = read_data(rho, process)
     qbar_dict = get_qbar_from_dataset(dataset)
     q_dict = read_lambda(rho, _filename_index, column_name="q")
@@ -211,7 +197,7 @@ def plot_g_lambda(rho):
 
     op = "QBAR"
     fig, ax = plt.subplots()
-    save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/figure")
+    save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/melting/figure"
     ss = SparseSampling(None, op)
     ss.load_result(save_dir=save_dir)
     x = ss.x
@@ -230,7 +216,7 @@ def plot_g_lambda(rho):
     ax.set_ylabel(r"$\beta \frac{dG}{d\lambda}$")
     ax.legend()
 
-    save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice/data/{rho}/prd/melting/figure")
+    save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/melting/figure"
     save_dir.mkdir(exist_ok=True)
     save_path = save_dir / "curvature.png"
     plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
@@ -239,7 +225,7 @@ def plot_g_lambda(rho):
 
 
 def compare_melting_icing(rho):
-    figure_save_dir = Path(f"/home/qinmian/data/gromacs/pseudoice") / "figure"
+    figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
 
     op = "QBAR"
     process_list = ["melting", "icing_300_long_ramp", "icing_300"]
@@ -264,11 +250,11 @@ def compare_melting_icing(rho):
 def main():
     process = "icing_300_long_ramp"
     for rho in [0.75]:
-        # calc_plot_save(rho, process)
+        calc_plot_save(rho, process)
         # calc_plot_lambda_q(rho)
         # plot_g_lambda(rho)
 
-        compare_melting_icing(rho)
+        # compare_melting_icing(rho)
 
 
 if __name__ == "__main__":
