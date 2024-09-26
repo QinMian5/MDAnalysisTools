@@ -6,13 +6,15 @@ import json
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
+from matplotlib.widgets import SpanSelector, Button
 from scipy.integrate import simpson
+from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
 import statsmodels.tsa.stattools
 from uncertainties import unumpy as unp
 
 from utils import calculate_histogram_parameters
-from utils_plot import create_fig_ax, save_figure
+from utils_plot import create_fig_ax, save_figure, plot_with_error_band
 from op_dataset import OPDataset
 
 
@@ -23,7 +25,7 @@ class EDA:
         self.dataset = dataset
         self.op = op
         self.save_dir = save_dir
-        self.acf_dict: dict[str, np.ndarray] | None = None
+        self.acf_dict: dict[str, unp.uarray] | None = None
         self.autocorr_time_dict: dict[str, list[float]] | None = None
 
     @property
@@ -50,62 +52,84 @@ class EDA:
             acf_dict[job_name] = acf_u
         self.acf_dict = acf_dict
 
-    def __
+    def __determine_autocorr_time(self):
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
-    def _calc_autocorr_time(self):
-        figure_save_dir = self.save_dir / "autocorr_func_detail"
-        op = self.op
-        tau_dict = {}
-        cross_threshold = 1 / np.e
-        for job_name, autocorr_func in self.acf_dict.items():
-            # Find the first intersection with the x-axis
-            smoothed_acf = gaussian_filter1d(autocorr_func, sigma=5)
-            for i in range(len(smoothed_acf) - 1):
-                x1, x2 = smoothed_acf[i:i + 2]
-                if x1 > cross_threshold > x2 or x1 < cross_threshold < x2:
-                    tau_cross = i + np.abs(x1) / (np.abs(x1) + np.abs(x2))
-                    break
-            else:
-                raise RuntimeError("ACF has no intersection with the x-axis")
+        job_name_list, acf_list = zip(*self.acf_dict.items())
+        num_datasets = len(job_name_list)
+        index = [0]
 
-            first_negative = np.where(autocorr_func <= 0)[0][0]
-            tau_int: float = simpson(autocorr_func[:int(tau_cross / 0.618)])
-            if first_negative < 10:
-                tau_fit = tau_cross
-            else:
-                t = self.dataset[job_name].df["t"].values
-                t = t - t[0]
-                n_positive = int(first_negative)
-                x = t[:n_positive]
-                log_acf = np.log(autocorr_func[:n_positive])
-                p, index = find_best_line(x, log_acf)
-                x_match = x[index]
-                y_match = log_acf[index]
-                k, b = p
-                x_line = np.array([x_match.min(), x_match.max()])
-                y_line = k * x_line + b
-                tau_fit = -1 / k
-                plt.style.use("presentation.mplstyle")
-                fig, ax = plt.subplots()
-                ax.plot(x, log_acf, "b-")
-                ax.plot(x_match, y_match, "ro", alpha=0.25)
-                ax.plot(x_line, y_line, "r-", label=rf"$y={k:.4}x+{b:.4}$")
-                ax.legend()
-                ax.set_title(rf"Log of ACF of {op} for {job_name}, $\tau = {tau_fit:.2f}$ ps")
-                # ax.set_title(rf"Log of ACF of {op} for {job_name}")
-                ax.set_xlabel("$t$(ps)")
-                ax.set_ylabel(r"$\log$ ACF")
+        def plot_data(index):
+            job_name = job_name_list[index[0]]
+            acf_u = acf_list[index[0]]
+            t = self.dataset[job_name].df["t"].values
+            t = t - t[0]
 
-                figure_save_dir.mkdir(parents=True, exist_ok=True)
-                save_path = figure_save_dir / f"log_ACF_{op}_{job_name}.png"
-                plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-                print(f"Saved the figure to {save_path.resolve()}")
-                plt.close(fig)
+            plot_with_error_band(ax1, t, acf_u)
+            ax1.set_ylabel('ACF')
+            ax1.set_title('Autocorrelation Function')
+            ax1.legend()
+            ax1.grid(True)
 
-                tau_fit /= self.dataset[job_name].time_step
+            acf = unp.nominal_values(acf_u)
+            acf_err = unp.std_devs(acf_u)
+            with (np.errstate(divide='ignore', invalid='ignore')):
+                log_acf = np.log(np.abs(acf))
+                log_acf_err = acf_err / np.abs(acf)
+                log_acf_u = unp.uarray(log_acf, log_acf_err)
+            # Plot the log ACF
+            plot_with_error_band(ax2, t, log_acf_u)
+            ax2.set_xlabel('Lag time (τ)')
+            ax2.set_ylabel('Log ACF')
+            ax2.set_title('Log of Autocorrelation Function')
+            ax2.legend()
+            ax2.grid(True)
 
-            tau_dict[job_name] = [tau_cross, tau_int, tau_fit]
-        self.autocorr_time_dict = tau_dict
+            fit_line = ax2.plot([], [], "r-")
+            exp_fit_line = ax1.plot([], [], "r-")
+
+            def onselect(xmin, xmax):
+                # Extract the indices of the selected data range
+                indmin, indmax = np.searchsorted(t, (xmin, xmax))
+                indmax = min(len(t) - 1, indmax)
+                if indmax - indmin < 5:
+                    fig.canvas.draw_idle()
+                    return
+
+                # Extract selected data
+                t_sel = t[indmin:indmax]
+                log_acf_sel = log_acf[indmin:indmax]
+
+                # Weigh the fit by the inverse of the variances
+                p = np.polyfit(t_sel, log_acf_sel, 1)
+
+                # Plot the fitted curve on ax1
+                y_fit = np.polyval(p, t_sel)
+                exp_y_fit = np.exp(y_fit)
+                fit_line.set_data(t_sel, y_fit)
+                exp_fit_line.set_data(t_sel, exp_y_fit)
+                fig.canvas.draw_idle()
+
+            span = SpanSelector(ax2, onselect, "horizontal", useblit=True)
+
+            ax1.clear()
+            ax2.clear()
+            span.disconnect_events()
+
+        plot_data(index)
+
+        button_ax = plt.axes((0.8, 0.01, 0.1, 0.05))
+        next_button = Button(button_ax, "Next")
+
+        def on_next(event):
+            index[0] += 1
+            if index[0] >= num_datasets:
+                plt.close(fig)  # 关闭图形窗口
+                return
+            plot_data(index)
+
+        next_button.on_clicked(on_next)
+        plt.show()
 
     def plot_op(self, save_fig=True, save_dir=Path("./figure")):
         figure_save_dir = save_dir / "autocorr_func_detail"
@@ -176,58 +200,6 @@ class EDA:
             plt.show()
         plt.close(fig)
 
-        # # Plot each ACF
-        # detail_save_dir = save_dir / "autocorr_func_detail"
-        # detail_save_dir.mkdir(parents=True, exist_ok=True)
-        # for job_name in autocorr_func_dict:
-        #     autocorr_func = autocorr_func_dict[job_name]
-        #     autocorr_time = autocorr_time_dict[job_name]
-        #     tau_cross, tau_int, tau_fit = autocorr_time
-        #     tau = np.mean([tau_cross, tau_int, tau_fit])
-        #     fig, ax = plt.subplots()
-        #     ax.set_title(rf"ACF of {op} for {job_name}, $\bar\tau = {tau:.2f}$ ps")
-        #     ax.set_xlabel("$t$(ps)")
-        #     ax.set_ylabel("ACF")
-        #     t = self.dataset[job_name].df["t"].values
-        #     t = t[:len(autocorr_func)]
-        #     t = t - t[0]
-        #     index = slice(0, int(np.ceil(3 * tau)))
-        #     x, y = t[index], autocorr_func[index]
-        #     ax.plot([x.min(), x.max()], [0, 0], "--", color="black")
-        #     ax.plot(x, y, "b-")
-        #     ax.plot(tau_cross, 0, "ro", label=rf"$\tau_{{cross}} = {tau_cross:.2f}$ ps")
-        #     ax.plot(tau_int, 0, "go", label=rf"$\tau_{{int}} = {tau_int:.2f}$ ps")
-        #     ax.plot(tau_fit, 0, "bo", label=rf"$\tau_{{fit}} = {tau_fit:.2f}$ ps")
-        #     ax.legend()
-        #     if save_fig:
-        #         save_path = detail_save_dir / f"autocorr_func_{op}_{job_name}.png"
-        #         plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-        #         print(f"Saved the figure to {save_path.resolve()}")
-        #     else:
-        #         plt.show()
-        #     plt.close(fig)
-        #
-        # # Plot ACT
-        # fig, ax = plt.subplots()
-        # ax.set_title(f"Autocorrelation Time (ACT) of {op}")
-        # # ax.set_xlabel("")
-        # ax.set_ylabel("$t$(ps)")
-        #
-        # job_names = self.tau_dict.keys()
-        # autocorr_times = self.tau_dict.values()
-        #
-        # ax.bar(job_names, autocorr_times)
-        # plt.xticks(rotation=90)
-        #
-        # if save_fig:
-        #     save_dir.mkdir(parents=True, exist_ok=True)
-        #     save_path = save_dir / f"autocorr_time_{op}.png"
-        #     plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-        #     print(f"Saved the figure to {save_path.resolve()}")
-        # else:
-        #     plt.show()
-        # plt.close(fig)
-
     def plot_histogram(self, num_bins: int = None, bin_width: float = None,
                        bin_range: tuple[float, float] = None, save_fig=True, save_dir=Path("./figure")):
         """
@@ -282,61 +254,6 @@ class EDA:
         save_path = save_dir / self.result_filename
         with open(save_path, 'r') as file:
             self.autocorr_time_dict = json.load(file)
-
-
-# def find_line(x_array: np.ndarray, y_array: np.ndarray) -> tuple[float, float, np.ndarray]:
-#     N = x_array.shape[0]
-#     assert x_array.shape == (N,) and y_array.shape == (N,), "Wrong shape"
-#
-#     # skip the first points
-#     n_skip = 1
-#     valid_index1 = (np.arange(n_skip, x_array.shape[0]),)
-#     x_array = x_array[valid_index1]
-#     y_array = y_array[valid_index1]
-#
-#     y_smooth_array = gaussian_filter1d(y_array, sigma=5)
-#     fluctuation = np.abs(y_array - y_smooth_array)
-#     smoothed_fluctuation = gaussian_filter1d(fluctuation, sigma=3)
-#     threshold1 = 1.5 * smoothed_fluctuation[:int(0.1 * len(smoothed_fluctuation))].mean()  # The average of the first 10%
-#     # threshold2 =
-#     threshold = threshold1
-#
-#     valid_index2 = np.where(smoothed_fluctuation < threshold)
-#     x_array = x_array[valid_index2]
-#     y_array = y_array[valid_index2]
-#
-#     N = x_array.shape[0]
-#     record_list = []
-#     theta_array = np.linspace(0, np.pi / 2, 900)
-#     for theta in theta_array:
-#         r_array = x_array * np.cos(theta) + y_array * np.sin(theta)
-#         sorted_r = np.sort(r_array)
-#         bin_min = float(sorted_r[int(0.1 * N)])
-#         bin_max = float(sorted_r[int(0.9 * N)])
-#         bin_interval = threshold
-#         bin_num = int((bin_max - bin_min) / bin_interval)
-#         hist, bin_edges = np.histogram(r_array, bins=bin_num, range=(bin_min, bin_max))
-#
-#         # Gaussian Smoothing
-#         sigma = 2
-#         smoothed_hist = gaussian_filter1d(hist.astype(float), sigma=sigma)
-#         bin_center = (bin_edges[1:] + bin_edges[:-1]) / 2
-#
-#         indices = np.argsort(smoothed_hist)[::-1]
-#         for index in indices[:5]:
-#             r = bin_center[index]
-#             n = hist[index]
-#             if n < 5:
-#                 continue
-#             match_index = np.where(np.abs(r_array - r) < bin_interval)
-#             real_index = valid_index1[0][valid_index2][match_index]
-#             if real_index[0] > 10:
-#                 continue
-#             record_list.append((n, theta, r, real_index))
-#     record_list.sort(key=lambda x: x[0], reverse=True)
-#     theta, r, index = record_list[0][1:]
-#     index = valid_index1[0][valid_index2]
-#     return theta, r, index
 
 
 def find_best_line(x_array: np.ndarray, y_array: np.ndarray):
