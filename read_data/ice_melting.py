@@ -135,7 +135,7 @@ def main():
     ss = SparseSampling(dataset, op)
     ss.calculate()
     ss.plot(save_dir=FIGURE_SAVE_DIR, delta_mu=0.0)
-    ss.plot_debug(save_dir=FIGURE_SAVE_DIR)
+    ss.plot_detail(save_dir=FIGURE_SAVE_DIR)
     ss.save_result(save_dir=FIGURE_SAVE_DIR)
 
 

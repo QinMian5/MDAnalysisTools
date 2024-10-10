@@ -71,28 +71,23 @@ class OPData:
     def calculate_bias_potential(self, coordinates: dict[str, float | np.ndarray]) -> float | np.ndarray:
         """
             Calculate the bias potential (in kilojoules per mole) for a given position.
+            Compatible with ufloat.
 
             :param coordinates: The coordinate (or numpy array of positions) at which to calculate the bias potential.
             :return: Bias potential (or numpy array of bias potentials).
         """
         sample_value = next(iter(coordinates.values()))
-        if isinstance(sample_value, float) or isinstance(sample_value, int):
-            total_bias_potential = 0.0
-        elif isinstance(sample_value, np.ndarray):
-            total_bias_potential = np.zeros_like(sample_value)
-        else:
-            raise ValueError(f"Coordinates must either be float(int) or np.ndarray, got {type(sample_value)}")
+        total_bias_potential = np.zeros_like(sample_value)
 
         for variable, value in coordinates.items():
             if variable not in self.params:  # Unbiased
                 continue
-            bias_type = self.params[variable]["TYPE"]
-            if bias_type == "parabola":
-                kappa = self.params[variable]["KAPPA"]
-                center = self.params[variable]["STAR"]
-                # bias_potential = 0.5 * kappa * (value - center) ** 2 * 1000 / c.N_A
-                bias_potential = 0.5 * kappa * (value - center) ** 2
-                total_bias_potential += bias_potential
+            kappa = self.params[variable].get("KAPPA", 0)
+            x_star = self.params[variable].get("X_STAR", 0)
+            phi = self.params[variable].get("PHI", 0)
+
+            bias_potential = 0.5 * kappa * (value - x_star) ** 2 + phi * value  # kJ/mol
+            total_bias_potential += bias_potential
             return total_bias_potential
 
 

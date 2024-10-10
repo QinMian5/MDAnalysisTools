@@ -93,21 +93,17 @@ def calc_plot_save(rho, process):
     op = "QBAR"
     dataset = read_data(rho, process)
     eda = EDA(dataset, op, figure_save_dir)
-    # eda.load_result(figure_save_dir)
-    # eda.plot_op(save_dir=figure_save_dir)
-    # eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
     eda.calculate_acf()
-    eda.determine_autocorr_time(figure_save_dir, ignore_previous=True)
-    # eda.plot_autocorr(save_dir=figure_save_dir)
-    # eda.save_result(save_dir=figure_save_dir)
-    # tau_dict = eda.tau_dict
-    # dataset.update_autocorr_time(tau_dict)
-    # ss = SparseSampling(dataset, op)
-    # ss.calculate()
-    # ss.plot_free_energy(save_dir=figure_save_dir)
-    # ss.plot_different_DeltaT(save_dir=figure_save_dir)
-    # ss.plot_debug(save_dir=figure_save_dir)
-    # ss.save_result(save_dir=figure_save_dir)
+    eda.determine_autocorr_time(figure_save_dir, ignore_previous=0)
+    eda.plot_op(save_dir=figure_save_dir)
+    eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
+    eda.plot_acf(save_dir=figure_save_dir)
+    eda.plot_act(save_dir=figure_save_dir)
+    ss = SparseSampling(dataset, op)
+    ss.calculate()
+    ss.plot_free_energy(save_dir=figure_save_dir)
+    ss.plot_different_DeltaT(save_dir=figure_save_dir)
+    ss.plot_detail(save_dir=figure_save_dir)
 
 
 def calc_plot_lambda_q(rho, process):
@@ -200,7 +196,7 @@ def plot_g_lambda(rho):
     save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/melting/figure"
     ss = SparseSampling(None, op)
     ss.load_result(save_dir=save_dir)
-    x = ss.x
+    x = ss.x_u
     dG_dq, sigma_dG_dq = ss.dF_nu_dx
     with open(save_dir / _filename_lambda_q) as file:
         dlambda_dq, sigma_dlambda_dq = json.load(file)
@@ -228,7 +224,7 @@ def compare_melting_icing(rho):
     figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
 
     op = "QBAR"
-    process_list = ["melting", "icing_300_long_ramp", "icing_300"]
+    process_list = ["melting", "icing_300", "icing_300_long_ramp", "icing_constant_ramp_rate"]
     ss_list = []
     for process in process_list:
         dataset = read_data(rho, process)
@@ -248,7 +244,10 @@ def compare_melting_icing(rho):
 
 
 def main():
-    process = "icing_300_long_ramp"
+    # process = "melting"
+    # for rho in [1.0]:
+    #     calc_plot_save(rho, process)
+    process = "icing_small_kappa"
     for rho in [0.75]:
         calc_plot_save(rho, process)
         # calc_plot_lambda_q(rho)

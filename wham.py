@@ -7,6 +7,8 @@ import pandas as pd
 import scipy.constants as c
 import autograd.numpy as agnp
 import matplotlib.pyplot as plt
+from uncertainties import ufloat
+import uncertainties.unumpy as unp
 
 from utils import calculate_histogram_parameters, convert_unit
 from op_dataset import OPDataset
@@ -14,8 +16,6 @@ from optimize import LBFGS, alogsumexp
 
 
 class BinlessWHAM:
-    result_filename = "result_wham.csv"
-
     def __init__(self, dataset: OPDataset, op: str):
         self.dataset = dataset
         self.op = op
@@ -57,6 +57,7 @@ class BinlessWHAM:
         Ui_Zj = self.Ui_Zj
         F_i0 = np.zeros(N_i.shape[0])
         F_i = LBFGS(self.NLL, F_i0, args=(N_i, N_tot, Ui_Zj, self.dataset.beta), iprint=-1)
+        #TODO: Newton Raphson
         F_i = F_i.reshape(-1, 1)
         self.F_i = F_i
 

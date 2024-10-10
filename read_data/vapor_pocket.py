@@ -70,7 +70,7 @@ def main():
     ss = SparseSampling(dataset, op)
     ss.calculate()
     ss.plot(save_dir=figure_save_dir)
-    ss.plot_debug(save_dir=figure_save_dir)
+    ss.plot_detail(save_dir=figure_save_dir)
     ss.save_result(save_dir=figure_save_dir)
 
 
