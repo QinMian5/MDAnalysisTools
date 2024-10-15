@@ -224,7 +224,7 @@ def compare_melting_icing(rho):
     figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
 
     op = "QBAR"
-    process_list = ["melting", "icing_300", "icing_300_long_ramp", "icing_constant_ramp_rate"]
+    process_list = ["melting", "icing_300", "icing_300_long_ramp", "icing_constant_ramp_rate", "icing_10ns", "icing_small_kappa"]
     ss_list = []
     for process in process_list:
         dataset = read_data(rho, process)
@@ -242,13 +242,23 @@ def compare_melting_icing(rho):
     save_path = figure_save_dir / f"comparison_{rho}.png"
     save_figure(fig, save_path)
 
+    title = fr"Comparison of $\beta dF_{{\lambda}} / dx$, $\alpha = {rho}$"
+    x_label = "qbar"
+    y_label = r"$\beta dF_{\lambda} / dx$"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+    for process, ss in zip(process_list, ss_list):
+        ss.plot_dF_lambda_dx_star_plot_line(ax, label=process)
+    ax.legend()
+    save_path = figure_save_dir / f"comparison_detail_{rho}.png"
+    save_figure(fig, save_path)
+
 
 def main():
     # process = "melting"
     # for rho in [1.0]:
     #     calc_plot_save(rho, process)
-    process = "icing_small_kappa"
-    for rho in [0.75]:
+    process = "icing_270K"
+    for rho in [1.0]:
         calc_plot_save(rho, process)
         # calc_plot_lambda_q(rho)
         # plot_g_lambda(rho)

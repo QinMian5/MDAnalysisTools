@@ -55,9 +55,8 @@ class SparseSampling:
             x = op_values.mean()
             s_x = np.std(op_values, ddof=1) / np.sqrt(N_ind)
             x_u = ufloat(x, s_x)
-            x_star = params["X_STAR"]
+            x_star = params.get("X_STAR", params.get("STAR"))
             kappa = params["KAPPA"]
-            phi = params["PHI"]
             dF_lambda_dx_star_u = kappa * (x_star - x_u)
             x_list.append(x_u)
             x_star_list.append(x_star)
@@ -206,6 +205,12 @@ class SparseSampling:
         save_figure(fig, save_path)
         plt.close(fig)
 
+    def plot_dF_lambda_dx_star_plot_line(self, ax, label=None, **kwargs):
+        x_star = self.x_star
+        dF_lambda_dx_star_u = self.dF_lambda_dx_star_u
+        line = plot_with_error_bar(ax, x_star, convert_unit(dF_lambda_dx_star_u), "o--", label=label, **kwargs)
+        return line
+
     def plot_detail(self, save_dir=Path("./figure")):
         op = self.op
         title = "Sparse Sampling (Detail)"
@@ -221,9 +226,7 @@ class SparseSampling:
         ax2 = ax1.twinx()
         ax2.set_ylabel(r"$\beta dF_{\lambda} / dx$")
         ax2.tick_params(axis='y', colors="red")
-        x_star = self.x_star
-        dF_lambda_dx_star_u = self.dF_lambda_dx_star_u
-        line2 = plot_with_error_bar(ax2, x_star, convert_unit(dF_lambda_dx_star_u), "ro--", label=r"$\beta dF_{\lambda} / dx$")
+        line2 = self.plot_dF_lambda_dx_star_plot_line(ax2, label=r"$\beta dF_{\lambda} / dx$", color="red")
 
         lines = [line1, line2]
         labels = [str(line.get_label()) for line in lines]

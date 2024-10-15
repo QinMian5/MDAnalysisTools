@@ -54,7 +54,7 @@ class EDA:
 
             acf = unp.nominal_values(acf_u)
             acf_err = unp.std_devs(acf_u)
-            plot_until = np.where(acf < 1e-3)[0][0]
+            plot_until = np.where(acf < 1e-2)[0][0]
             log_acf = np.log(acf[:plot_until])
             log_acf_err = acf_err[:plot_until] / acf[:plot_until]
             log_acf_u = unp.uarray(log_acf, log_acf_err)
@@ -68,12 +68,20 @@ class EDA:
             exp_fit_line = ax1.plot([], [], "r-")[0]
             act_line = ax1.plot([], [], "r--")[0]
 
-            text_box_ax = fig.add_axes((0.2, 0.01, 0.1, 0.05))
-            text_box = TextBox(text_box_ax, label="ACT")
-
             temp_act = [0]
 
-            def onselect(xmin, xmax):
+            def on_submit(expression):
+                act = float(expression.split()[0])
+                temp_act[0] = act
+                act_line.set_data([act, act], [-1, 1])
+                text_box.set_val(f"{act:.1f} ps")
+
+            text_box_ax = fig.add_axes((0.2, 0.01, 0.1, 0.05))
+            text_box = TextBox(text_box_ax, label="ACT")
+            text_box.on_submit(on_submit)
+
+
+            def on_select(xmin, xmax):
                 # Extract the indices of the selected data range
                 indmin, indmax = np.searchsorted(t, (xmin, xmax))
 
@@ -99,7 +107,7 @@ class EDA:
                 act_line.set_data([act, act], [-1, 1])
                 fig.canvas.draw_idle()
 
-            span = SpanSelector(ax2, onselect, "horizontal", minspan=3, useblit=True, interactive=True,
+            span = SpanSelector(ax2, on_select, "horizontal", minspan=3, useblit=True, interactive=True,
                                 props={"facecolor": "red", "alpha": 0.2})
 
             def on_auto_adjust(event):
@@ -156,15 +164,24 @@ class EDA:
         plt.style.use("presentation.mplstyle")
         for job_name, data in self.dataset.items():
             df = data.initial_df
-            x = df["t"].values
-            y = df[op].values
+            t = df["t"].values
+            x = df[op].values
+            params = data.params
+            x_star = params[op]["X_STAR"]
+            x_star_init = params[op]["X_STAR_INIT"]
+            ramp_time = params["RAMP_TIME"]
+            prd_time = params["PRD_TIME"]
+            k = (x_star - x_star_init) / ramp_time
+            x_star_t = np.where(t < ramp_time, x_star_init + k * t, x_star)
 
             title = "Order Parameters as a Function of $t$"
             x_label = "$t$(ps)"
             y_label = f"{op}"
             fig, ax = create_fig_ax(title, x_label, y_label)
 
-            ax.plot(x, y, "b-")
+            ax.plot(t, x, "b-", label="$x$")
+            ax.plot(t, x_star_t, "r--", label="$x^*$")
+            ax.legend()
 
             save_path = figure_save_dir / f"op_{op}_{job_name}.png"
             save_figure(fig, save_path)
