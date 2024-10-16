@@ -9,7 +9,7 @@ from scipy import constants as c
 
 
 class OPData:
-    def __init__(self, data: pd.DataFrame, params: dict):
+    def __init__(self, data: pd.DataFrame, params: dict, relaxation_after_ramp=200):
         self._T = None
         self._beta = None
         self._drop_before = 0
@@ -23,7 +23,7 @@ class OPData:
         self.T = params["TEMPERATURE"]
         self.ramp_time = params["RAMP_TIME"]
         self.prd_time = params["PRD_TIME"]
-        self.drop_before(self.ramp_time + 200)
+        self.drop_before(self.ramp_time + relaxation_after_ramp)
 
     @property
     def T(self):
@@ -43,7 +43,13 @@ class OPData:
         return self._df[self._df["t"] >= self._drop_before].copy()
 
     @property
-    def initial_df(self):
+    def df_bootstrap(self):
+        df = self._df[self._df["t"] >= self._drop_before].copy()
+        resampled_df = df.sample(n=self.independent_samples, replace=True)
+        return resampled_df
+
+    @property
+    def df_original(self):
         return self._df.copy()
 
     @property

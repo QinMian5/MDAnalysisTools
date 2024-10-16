@@ -104,6 +104,7 @@ def calc_plot_save(rho, process):
     ss.plot_free_energy(save_dir=figure_save_dir)
     ss.plot_different_DeltaT(save_dir=figure_save_dir)
     ss.plot_detail(save_dir=figure_save_dir)
+    wham =
 
 
 def calc_plot_lambda_q(rho, process):
@@ -257,7 +258,7 @@ def main():
     # process = "melting"
     # for rho in [1.0]:
     #     calc_plot_save(rho, process)
-    process = "icing_270K"
+    process = "melting_270K"
     for rho in [1.0]:
         calc_plot_save(rho, process)
         # calc_plot_lambda_q(rho)

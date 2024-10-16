@@ -163,7 +163,7 @@ class EDA:
         op = self.op
         plt.style.use("presentation.mplstyle")
         for job_name, data in self.dataset.items():
-            df = data.initial_df
+            df = data.df_original
             t = df["t"].values
             x = df[op].values
             params = data.params

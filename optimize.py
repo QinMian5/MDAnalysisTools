@@ -73,6 +73,16 @@ def LBFGS(f, x0, args=(), iprint=-1):
         raise ConvergenceError("LBFGS method failed to converge.")
 
 
+def newton_CG(f, x0, args=(), iprint=-1):
+    result = minimize(value_and_grad(f), x0, args=args, method='Newton-CG', jac=True, options={"iprint": iprint})
+    if result.success:
+        if iprint >= 0:
+            print("Newton-CG method converged.")
+        return result.x
+    else:
+        raise ConvergenceError("Newton-CG method failed to converge.")
+
+
 def alogsumexp(a, b=None, axis=None, keepdims=False):
     """
     Performs logsumexp using autograd.numpy
