@@ -23,6 +23,7 @@ class OPData:
         self.T = params["TEMPERATURE"]
         self.ramp_time = params["RAMP_TIME"]
         self.prd_time = params["PRD_TIME"]
+        # TODO: Determine t_drop
         self.drop_before(self.ramp_time + relaxation_after_ramp)
 
     @property

@@ -1,12 +1,14 @@
 # Author: Mian Qin
 # Date Created: 12/15/23
-
 from pathlib import Path
+
+from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import scipy.constants as c
 import autograd.numpy as agnp
 import matplotlib.pyplot as plt
+from statsmodels.sandbox.distributions.gof_new import bootstrap
 from uncertainties import ufloat
 import uncertainties.unumpy as unp
 
@@ -31,12 +33,32 @@ class BinlessWHAM:
         self.F_i: None | np.ndarray = None
         self.energy: None | list[np.ndarray, np.ndarray] = None
 
-    def wham(self):
+        num_bins, bin_range = calculate_histogram_parameters(self.dataset, self.op, self.num_bins, self.bin_width, self.bin_range)
+        _, bin_edges = np.histogram([], bins=num_bins, range=bin_range)
+        self.bin_midpoint = (bin_edges[1:] + bin_edges[:-1]) / 2
+
+    def calculate(self, with_uncertainties=False):
+        num_bins, bin_range = calculate_histogram_parameters(self.dataset, self.op, self.num_bins, self.bin_width, self.bin_range)
+        energy = self.wham(bootstrap=False)
+        if with_uncertainties:
+            energy_list = []
+            for i in tqdm(range(1000)):
+                energy_bootstrap = self.wham(bootstrap=True)
+                # TODO: align
+                energy_list.append(energy_bootstrap)
+            energy_array = np.stack(energy_list, axis=0)
+            energy_mean = np.mean(energy_array, axis=0)
+            energy_std = np.std(energy_array, axis=0, ddof=1)
+            # TODO: check Gaussian
+            energy = unp.uarray(energy_mean, energy_std)
+        return energy
+
+    def wham(self, bootstrap=False):
         op = self.op
         N_i = []
         all_coord = []
         for _, op_data in self.dataset.items():
-            df = op_data.df
+            df = op_data.df_bootstrap if bootstrap else op_data.df
             N_i.append(len(df))
             coord = df[op].values
             all_coord.append(coord)
@@ -48,7 +70,7 @@ class BinlessWHAM:
             coordinates[column_name] = coord
         Ui_Zj = []  # bias potential
         for job_name, op_data in self.dataset.items():
-            bias = op_data.calculate_bias_potential(coordinates) * 1000 / c.N_A
+            bias = op_data.calculate_bias_potential(coordinates) * 1000 / c.N_A  # to J
             Ui_Zj.append(bias)
         Ui_Zj = np.stack(Ui_Zj, axis=0)
         # LBFGS
@@ -58,17 +80,15 @@ class BinlessWHAM:
         F_i = F_i.reshape(-1, 1)
         self.F_i = F_i
 
-        num_bins, bin_range = calculate_histogram_parameters(self.dataset, op, num_bins, bin_width, bin_range)
+        num_bins, bin_range = calculate_histogram_parameters(self.dataset, op, self.num_bins, self.bin_width, self.bin_range)
         beta = self.dataset.beta
         Z_j = self.coordinates[op]
         W_j = 1 / (np.sum(N_i * np.exp(F_i - beta * Ui_Zj), axis=0))
         hist_wj, bin_edges = np.histogram(Z_j, bins=num_bins, range=bin_range, weights=W_j)
         p_wj = hist_wj / np.sum(hist_wj)
-        bin_midpoints = (bin_edges[1:] + bin_edges[:-1]) / 2
         energy = -1 / self.dataset.beta.mean() * np.log(p_wj) / 1000 * c.N_A  # To kJ/mol
         energy = energy - energy.min()
-        # TODO: uncertainty analysis
-        self.energy = [bin_midpoints, energy]
+        return energy
 
     @staticmethod
     def NLL(F_i: np.ndarray, N_i: np.ndarray, N_tot: int, Ui_Zj: np.ndarray, beta):
@@ -87,12 +107,6 @@ class BinlessWHAM:
         A = -agnp.sum(N_i / N_tot * F_i, axis=0, keepdims=True) + 1 / N_tot * agnp.sum(
             alogsumexp(a=F_i - beta * Ui_Zj, b=N_i / N_tot, axis=0, keepdims=True), axis=1, keepdims=True)
         return A
-
-    def calculate(self, column_names):
-        column_name = self.op
-        self._1_preprocess_data(column_names)
-        self._2_maximum_likelihood_estimate()
-        self._3_calculate_energy(column_name)
 
     def plot(self, save_fig=True, save_dir=Path("./figure")):
         op = self.op
