@@ -18,8 +18,6 @@ from eda import EDA
 from sparse_sampling import SparseSampling
 
 _filename_index = "solid_like_atoms.index"
-_filename_index2 = "solid_like_atoms_with_PI.index"
-_filename_index3 = "solid_like_atoms_chillplus.index"
 _filename_index4 = "solid_like_atoms_corrected.index"
 _filename_lambda_q = "lambda_q.json"
 
@@ -104,7 +102,6 @@ def calc_plot_save(rho, process):
     ss.plot_free_energy(save_dir=figure_save_dir)
     ss.plot_different_DeltaT(save_dir=figure_save_dir)
     ss.plot_detail(save_dir=figure_save_dir)
-    wham =
 
 
 def calc_plot_lambda_q(rho, process):

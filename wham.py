@@ -31,14 +31,13 @@ class BinlessWHAM:
         self.Ui_Zj: None | np.ndarray = None
         self.coordinates: None | dict[str, np.ndarray] = None
         self.F_i: None | np.ndarray = None
-        self.energy: None | list[np.ndarray, np.ndarray] = None
+        self.energy: None | np.ndarray = None
 
         num_bins, bin_range = calculate_histogram_parameters(self.dataset, self.op, self.num_bins, self.bin_width, self.bin_range)
         _, bin_edges = np.histogram([], bins=num_bins, range=bin_range)
         self.bin_midpoint = (bin_edges[1:] + bin_edges[:-1]) / 2
 
     def calculate(self, with_uncertainties=False):
-        num_bins, bin_range = calculate_histogram_parameters(self.dataset, self.op, self.num_bins, self.bin_width, self.bin_range)
         energy = self.wham(bootstrap=False)
         if with_uncertainties:
             energy_list = []
@@ -51,7 +50,7 @@ class BinlessWHAM:
             energy_std = np.std(energy_array, axis=0, ddof=1)
             # TODO: check Gaussian
             energy = unp.uarray(energy_mean, energy_std)
-        return energy
+        self.energy = energy
 
     def wham(self, bootstrap=False):
         op = self.op
