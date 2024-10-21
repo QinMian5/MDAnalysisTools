@@ -10,12 +10,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.optimize import curve_fit
 from scipy.stats import pearsonr
+import uncertainties.unumpy as unp
 
 from utils import convert_unit, read_solid_like_atoms
 from utils_plot import create_fig_ax, save_figure
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
 from sparse_sampling import SparseSampling
+from wham import BinlessWHAM
 
 _filename_index = "solid_like_atoms.index"
 _filename_index4 = "solid_like_atoms_corrected.index"
@@ -65,7 +67,7 @@ def filter_solid_like_atoms(solid_like_atoms_dict: dict[str, list[str]]) -> dict
 def get_qbar_from_dataset(dataset: OPDataset) -> dict[str, pd.DataFrame]:
     q_dict = {}
     for job_name, data in dataset.items():
-        df = data.df
+        df = data.df_prd
         t = [f"{x:.1f}" for x in df["t"].values]
         qbar = df["QBAR"].values
         q_dict[job_name] = pd.DataFrame({"t": t, "qbar": qbar})
@@ -91,6 +93,7 @@ def calc_plot_save(rho, process):
     op = "QBAR"
     dataset = read_data(rho, process)
     eda = EDA(dataset, op, figure_save_dir)
+    eda.determine_relaxation_time()
     eda.calculate_acf()
     eda.determine_autocorr_time(figure_save_dir, ignore_previous=0)
     eda.plot_op(save_dir=figure_save_dir)
@@ -218,11 +221,62 @@ def plot_g_lambda(rho):
     plt.close(fig)
 
 
+def plot_difference(rho):
+    figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
+    op = "QBAR"
+    process_list = ["melting_300K", "melting_270K"]
+
+    title = fr"Free Energy Difference, $\alpha = {rho}$, Ref: {process_list[0]}"
+    x_label = "qbar"
+    y_label = fr"$F$ (kJ/mol)"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+    fig2, ax2 = create_fig_ax("Free Energy $-$ Linear Fit", x_label, y_label)
+
+    process_ref = process_list[0]
+    dataset = read_data(rho, process_ref)
+    ss = SparseSampling(dataset, op)
+    ss.calculate()
+    x_u_ref = ss.x_u
+    x_ref = unp.nominal_values(x_u_ref)
+    F_nu_u_ref = unp.nominal_values(ss.F_nu_u)
+    # wham = BinlessWHAM(dataset, op, bin_width=5, bin_range=(0, 1800))
+    # wham.calculate()
+    # x_ref = wham.bin_midpoint
+    # F_ref = wham.energy
+    for process in process_list[1:]:
+        dataset = read_data(rho, process)
+        ss = SparseSampling(dataset, op)
+        ss.calculate()
+        x_u = ss.x_u
+        x = unp.nominal_values(x_u)
+        F_nu_u = unp.nominal_values(ss.F_nu_u)
+        x_plot = np.linspace(max(x_ref.min(), x.min()), min(x_ref.max(), x.max()), 1000)
+        y_interp = np.interp(x_plot, x, F_nu_u)
+        y_interp_ref = np.interp(x_plot, x_ref, F_nu_u_ref)
+        y_plot = y_interp - y_interp_ref
+        p = np.polyfit(x_plot, y_plot, 1)
+        y_fit = np.polyval(p, x_plot)
+        delta_y = y_plot - y_fit
+        ax.plot(x_plot, y_plot, "-", label=f"{process}")
+        ax.plot(x_plot, y_fit, "--", label=f"linear fit of {process}, $y = {p[0]:.3}x + {p[1]:.3}$")
+        ax2.plot(x_plot, delta_y, "-", label=process)
+        # wham = BinlessWHAM(dataset, op, bin_width=5, bin_range=(0, 1800))
+        # wham.calculate()
+        # F = wham.energy
+        # ax.plot(x_ref, F - F_ref, "o-", label=process)
+    ax.legend()
+    ax2.legend()
+    save_path = figure_save_dir / f"energy_difference_{rho}.png"
+    save_figure(fig, save_path)
+    save_path = figure_save_dir / f"energy_difference_minus_linear_fit_{rho}.png"
+    save_figure(fig2, save_path)
+
+
 def compare_melting_icing(rho):
     figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
 
     op = "QBAR"
-    process_list = ["melting", "icing_300", "icing_300_long_ramp", "icing_constant_ramp_rate", "icing_10ns", "icing_small_kappa"]
+    process_list = ["melting_270K", "melting_300K"]
     ss_list = []
     for process in process_list:
         dataset = read_data(rho, process)
@@ -262,6 +316,7 @@ def main():
         # plot_g_lambda(rho)
 
         # compare_melting_icing(rho)
+        # plot_difference(rho)
 
 
 if __name__ == "__main__":

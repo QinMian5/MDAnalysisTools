@@ -36,12 +36,12 @@ def calculate_histogram_parameters(dataset: OPDataset, column_name, num_bins: in
         :return: A tuple containing calculated num_bins and bin_range.
     """
     if bin_range is None:
-        column_min = min(data.df[column_name].min() for data in dataset.values())
-        column_max = max(data.df[column_name].max() for data in dataset.values())
+        column_min = min(data.df_prd[column_name].min() for data in dataset.values())
+        column_max = max(data.df_prd[column_name].max() for data in dataset.values())
         bin_range = (column_min, column_max)
 
     if num_bins is None and bin_width is None:
-        total_points = sum(len(data.df[column_name]) for data in dataset.values())
+        total_points = sum(len(data.df_prd[column_name]) for data in dataset.values())
         # The default strategy for choosing num_bins ensures an average of 1000 points per bin.
         num_bins = max(total_points // 1000, 1)
     elif bin_width is not None:

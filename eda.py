@@ -1,12 +1,12 @@
 # Author: Mian Qin
 # Date Created: 6/12/24
 from pathlib import Path
-import json
 
 import numpy as np
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.widgets import SpanSelector, Button, TextBox
+from scipy.optimize import curve_fit
 import statsmodels.tsa.stattools
 from uncertainties import unumpy as unp
 
@@ -22,14 +22,22 @@ class EDA:
         self.save_dir = save_dir
         self.acf_dict: dict[str, unp.uarray] | None = None
 
-    def calculate_acf(self):
-        self.__calc_acf()
+    def determine_relaxation_time(self):
+        # TODO: Use ADF/KPSS
+        for job_name, op_data in self.dataset.items():
+            T = op_data.T
+            if T > 285:  # 300K
+                relaxation_time = 200
+            else:  # 270K
+                relaxation_time = 1000
+            op_data.relaxation_time = relaxation_time
+        self.dataset.save_relaxation_time()
 
-    def __calc_acf(self):
+    def calculate_acf(self):
         op = self.op
         acf_dict = {}
-        for job_name, data in self.dataset.items():
-            df = data.df
+        for job_name, op_data in self.dataset.items():
+            df = op_data.df_prd
             values = df[op].values
             acf, confint = statsmodels.tsa.stattools.acf(values, nlags=len(df), fft=True,
                                                          alpha=0.3173)  # Confidence interval: 1 sigma
@@ -44,7 +52,7 @@ class EDA:
             if not ignore_previous and self.dataset[job_name].autocorr_time is not None:
                 continue
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-            t = self.dataset[job_name].df["t"].values
+            t = self.dataset[job_name].df_prd["t"].values
             t = t - t[0]
 
             plot_with_error_band(ax1, t, acf_u)
@@ -66,7 +74,8 @@ class EDA:
 
             fit_line = ax2.plot([], [], "r-")[0]
             exp_fit_line = ax1.plot([], [], "r-")[0]
-            act_line = ax1.plot([], [], "r--")[0]
+            act_line = ax1.plot([], [], "g--")[0]
+            damped_oscillation_fit_line = ax1.plot([], [], "r-")[0]
 
             temp_act = [0]
 
@@ -76,10 +85,9 @@ class EDA:
                 act_line.set_data([act, act], [-1, 1])
                 text_box.set_val(f"{act:.1f} ps")
 
-            text_box_ax = fig.add_axes((0.2, 0.01, 0.1, 0.05))
+            text_box_ax = fig.add_axes((0.10, 0.01, 0.08, 0.05))
             text_box = TextBox(text_box_ax, label="ACT")
             text_box.on_submit(on_submit)
-
 
             def on_select(xmin, xmax):
                 # Extract the indices of the selected data range
@@ -105,12 +113,49 @@ class EDA:
                 fit_line.set_data(t_sel, y_fit)
                 exp_fit_line.set_data(t_sel, exp_y_fit)
                 act_line.set_data([act, act], [-1, 1])
+                damped_oscillation_fit_line.set_data([], [])
                 fig.canvas.draw_idle()
 
             span = SpanSelector(ax2, on_select, "horizontal", minspan=3, useblit=True, interactive=True,
                                 props={"facecolor": "red", "alpha": 0.2})
 
-            def on_auto_adjust(event):
+            def damped_oscillation(x, A, beta, omega1, phi1):
+                return A * np.exp(-beta * x) * np.cos(omega1 * x + phi1)
+
+            def on_fit(event):
+                # result = curve_fit(damped_oscillation, t[1:], acf[1:], p0=[acf[1], 1/2500, 2*np.pi/2000, 0],
+                #                    sigma=acf_err[1:], absolute_sigma=True)
+                result = curve_fit(damped_oscillation, t[1:], acf[1:], p0=[acf[1], 1/2500, 2*np.pi/2000, 0],)
+                p_opt = result[0]
+                y_fit = damped_oscillation(t[1:], *p_opt)
+                act = 1 / p_opt[1]
+
+                damped_oscillation_fit_line.set_data(t[1:], y_fit)
+                exp_fit_line.set_data([], [])
+                act_line.set_data([act, act], [-1, 1])
+                temp_act[0] = act
+                result = f"{act:.1f} ps"
+                text_box.set_val(result)
+                fig.canvas.draw_idle()
+
+
+            button_fit_ax = fig.add_axes((0.20, 0.01, 0.1, 0.05))
+            button_fit = Button(button_fit_ax, "Fit")
+            button_fit.on_clicked(on_fit)
+
+            def on_auto_adjust_x(event):
+                ax1.autoscale()
+                margin_ratio = 0.1
+                margin_y = (acf[1:].max() - acf[1:].min()) * margin_ratio
+                y_min = acf[1:].min() - margin_y
+                y_max = acf[1:].max() + margin_y
+                ax1.set_ylim(y_min, y_max)
+
+            button_auto_adjust_x_ax = fig.add_axes((0.32, 0.01, 0.1, 0.05))
+            button_auto_adjust_x = Button(button_auto_adjust_x_ax, "Auto Adjust X")
+            button_auto_adjust_x.on_clicked(on_auto_adjust_x)
+
+            def on_auto_adjust_y(event):
                 margin_ratio = 0.1
                 margin_x = t[plot_until - 1] * margin_ratio
                 x_min = t[0] - margin_x
@@ -121,14 +166,14 @@ class EDA:
                 y_max = log_acf.max() + margin_y
                 ax2.set_ylim(y_min, y_max)
 
-            button_auto_adjust_ax = fig.add_axes((0.35, 0.01, 0.1, 0.05))
-            button_auto_adjust = Button(button_auto_adjust_ax, "Auto Adjust")
-            button_auto_adjust.on_clicked(on_auto_adjust)
+            button_auto_adjust_y_ax = fig.add_axes((0.44, 0.01, 0.1, 0.05))
+            button_auto_adjust_y = Button(button_auto_adjust_y_ax, "Auto Adjust Y")
+            button_auto_adjust_y.on_clicked(on_auto_adjust_y)
 
             def on_reset(event):
                 ax1.autoscale()
 
-            button_reset_ax = fig.add_axes((0.5, 0.01, 0.1, 0.05))
+            button_reset_ax = fig.add_axes((0.56, 0.01, 0.1, 0.05))
             button_reset = Button(button_reset_ax, "Reset")
             button_reset.on_clicked(on_reset)
 
@@ -139,7 +184,7 @@ class EDA:
                 plt.close(fig)
 
             exit_flag = [True]
-            button_next_ax = fig.add_axes((0.65, 0.01, 0.1, 0.05))
+            button_next_ax = fig.add_axes((0.68, 0.01, 0.1, 0.05))
             button_next = Button(button_next_ax, "Save&Next")
             button_next.on_clicked(on_next)
 
@@ -162,17 +207,12 @@ class EDA:
         figure_save_dir = save_dir / "op_detail"
         op = self.op
         plt.style.use("presentation.mplstyle")
-        for job_name, data in self.dataset.items():
-            df = data.df_original
+        for job_name, op_data in self.dataset.items():
+            df = op_data.df_original
             t = df["t"].values
             x = df[op].values
-            params = data.params
-            x_star = params[op]["X_STAR"]
-            x_star_init = params[op]["X_STAR_INIT"]
-            ramp_time = params["RAMP_TIME"]
-            prd_time = params["PRD_TIME"]
-            k = (x_star - x_star_init) / ramp_time
-            x_star_t = np.where(t < ramp_time, x_star_init + k * t, x_star)
+            x_star_t = op_data.get_x_star_t(op)
+            prd_start = op_data.prd_start
 
             title = "Order Parameters as a Function of $t$"
             x_label = "$t$(ps)"
@@ -181,6 +221,7 @@ class EDA:
 
             ax.plot(t, x, "b-", label="$x$")
             ax.plot(t, x_star_t, "r--", label="$x^*$")
+            ax.plot([prd_start, prd_start], [x_star_t.min(), x_star_t.max()], "g--", label="prd_start")
             ax.legend()
 
             save_path = figure_save_dir / f"op_{op}_{job_name}.png"
@@ -206,7 +247,7 @@ class EDA:
         t_min, t_max = np.inf, 0
         for job_name, color in zip(acf_dict, colors):
             acf_u = acf_dict[job_name]
-            t = self.dataset[job_name].df["t"].values
+            t = self.dataset[job_name].df_prd["t"].values
             t = t[:len(acf_u)]
             t = t - t[0]
             t_min = min(t_min, t[0])
@@ -265,7 +306,7 @@ class EDA:
         all_hist, bin_edges = np.histogram([], bins=num_bins, range=bin_range)
         bin_midpoints = (bin_edges[1:] + bin_edges[:-1]) / 2
         for _, data in self.dataset.items():
-            df = data.df
+            df = data.df_prd
             hist, _ = np.histogram(df[op], bins=num_bins, range=bin_range)
 
             valid_indices = hist >= 1

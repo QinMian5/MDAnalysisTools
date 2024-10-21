@@ -53,11 +53,11 @@ class BinlessWHAM:
         self.energy = energy
 
     def wham(self, bootstrap=False):
-        op = self.op
+        op = [self.op]
         N_i = []
         all_coord = []
         for _, op_data in self.dataset.items():
-            df = op_data.df_bootstrap if bootstrap else op_data.df
+            df = op_data.df_bootstrap if bootstrap else op_data.df_prd
             N_i.append(len(df))
             coord = df[op].values
             all_coord.append(coord)
@@ -81,7 +81,7 @@ class BinlessWHAM:
 
         num_bins, bin_range = calculate_histogram_parameters(self.dataset, op, self.num_bins, self.bin_width, self.bin_range)
         beta = self.dataset.beta
-        Z_j = self.coordinates[op]
+        Z_j = coordinates[op[0]]
         W_j = 1 / (np.sum(N_i * np.exp(F_i - beta * Ui_Zj), axis=0))
         hist_wj, bin_edges = np.histogram(Z_j, bins=num_bins, range=bin_range, weights=W_j)
         p_wj = hist_wj / np.sum(hist_wj)

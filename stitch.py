@@ -22,7 +22,7 @@ class Stitch:
         num_bins, bin_range = calculate_histogram_parameters(self.dataset, column_name, num_bins, bin_width, bin_range)
         unbiased_data = []
         for job_name, data in self.dataset.items():
-            df = data.df
+            df = data.df_prd
             params = data.params
             hist, bin_edges = np.histogram(df[column_name].to_numpy(), bins=num_bins, range=bin_range)
             bin_midpoints = (bin_edges[1:] + bin_edges[:-1]) / 2

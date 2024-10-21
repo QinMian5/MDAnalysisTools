@@ -12,19 +12,19 @@ class OPData:
     def __init__(self, data: pd.DataFrame, params: dict, relaxation_after_ramp=200):
         self._T = None
         self._beta = None
-        self._drop_before = 0
         self._df: pd.DataFrame = data
         t = self._df["t"].values
-        time_step = np.mean(t[1:] - t[:-1])
+        time_step = np.mean(np.diff(t))
         self._time_step = time_step
-        self._autocorr_time: float | None = None  # In units of index
+        self._autocorr_time: float | None = None  # In ps
         self._independent_samples: int | None = None
+        self._prd_start: float | None = None  # In ps
         self.params = params
         self.T = params["TEMPERATURE"]
-        self.ramp_time = params["RAMP_TIME"]
-        self.prd_time = params["PRD_TIME"]
+        self._ramp_time = params["RAMP_TIME"]
+        self._relaxation_time: float | None = None  # In ps
+        self._prd_time = params["PRD_TIME"]
         # TODO: Determine t_drop
-        self.drop_before(self.ramp_time + relaxation_after_ramp)
 
     @property
     def T(self):
@@ -39,13 +39,42 @@ class OPData:
     def beta(self):
         return self._beta
 
+    def get_x_star_t(self, op):
+        df = self.df_original
+        t = df["t"].values
+        x_star = self.params[op]["X_STAR"]
+        x_star_init = self.params[op]["X_STAR_INIT"]
+        ramp_time = self.params["RAMP_TIME"]
+        k = (x_star - x_star_init) / ramp_time
+        x_star_t = np.where(t < ramp_time, x_star_init + k * t, x_star)
+        return x_star_t
+
+    def df_in_range(self, t_start=None, t_end=None):
+        if t_start is None:
+            t_start = self._df["t"].min()
+        if t_end is None:
+            t_end = self._df["t"].max()
+        index = (self._df["t"] >= t_start) & (self._df["t"] <= t_end)
+        return self._df[index].copy()
+
+    def df_before_t(self, t: float):
+        return self.df_in_range(t_end=t)
+
+    def df_after_t(self, t: float):
+        return self.df_in_range(t_start=t)
+
     @property
-    def df(self):
-        return self._df[self._df["t"] >= self._drop_before].copy()
+    def df_after_ramp(self):
+        return self.df_after_t(t=self._ramp_time)
+
+    @property
+    def df_prd(self):
+        return self.df_after_t(t=self._prd_start)
 
     @property
     def df_bootstrap(self):
-        df = self._df[self._df["t"] >= self._drop_before].copy()
+        df = self.df_prd
+        # TODO: Use block bootstrapping
         resampled_df = df.sample(n=self.independent_samples, replace=True)
         return resampled_df
 
@@ -60,9 +89,22 @@ class OPData:
     @autocorr_time.setter
     def autocorr_time(self, value: float):
         self._autocorr_time = value
-        t = self.df["t"].values
+        t = self.df_prd["t"].values
         t_tot = t[-1] - t[0]
         self._independent_samples = int(np.ceil(t_tot / self._autocorr_time))
+
+    @property
+    def relaxation_time(self):
+        return self._relaxation_time
+
+    @relaxation_time.setter
+    def relaxation_time(self, value: float):
+        self._relaxation_time = value
+        self._prd_start = self._ramp_time + self._relaxation_time
+
+    @property
+    def prd_start(self):
+        return self._prd_start
 
     @property
     def independent_samples(self):
@@ -71,9 +113,6 @@ class OPData:
     @property
     def time_step(self):
         return self._time_step
-
-    def drop_before(self, t: int | float):
-        self._drop_before = t
 
     def calculate_bias_potential(self, coordinates: dict[str, float | np.ndarray]) -> float | np.ndarray:
         """
@@ -110,6 +149,8 @@ class OPDataset(OrderedDict[str, OPData]):
     def __init__(self, data_dir, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_dir = Path(data_dir)
+        self.save_dir = self.data_dir.parent / "intermediate_result"
+        self.save_dir.mkdir(exist_ok=True)
 
     @property
     def T(self):
@@ -138,27 +179,49 @@ class OPDataset(OrderedDict[str, OPData]):
         bias_potential = self[job_name].calculate_bias_potential(coordinates)
         return bias_potential
 
-    def drop_before(self, t):
-        for name, data in self.items():
-            data.drop_before(t)
-
     def update_autocorr_time(self, act_dict: dict[str, float]):
         for job_name, act in act_dict.items():
             self[job_name].autocorr_time = act
 
+    def save_relaxation_time(self):
+        for job_name, op_data in self.items():
+            if op_data.relaxation_time is not None:
+                save_path = self.save_dir / job_name / "relaxation_time.txt"
+                save_path.parent.mkdir(exist_ok=True)
+                with open(save_path, "w") as file:
+                    file.write(f"{op_data.relaxation_time}\n")
+                print(f"{job_name}: Saved relaxation time to {save_path}")
+
+    def load_relaxation_time(self):
+        for job_name, op_data in self.items():
+            load_path = self.save_dir / job_name / "relaxation_time.txt"
+            if load_path.exists():
+                with open(load_path, "r") as file:
+                    relaxation_time = float(file.read().strip())
+                    op_data.relaxation_time = relaxation_time
+                    print(f"{job_name}: Loaded relaxation time from {load_path}")
+
     def save_act(self):
         for job_name, op_data in self.items():
             if op_data.autocorr_time is not None:
-                save_path = self.data_dir / job_name / "act.txt"
+                save_path = self.save_dir / job_name / "act.txt"
+                save_path.parent.mkdir(exist_ok=True)
                 with open(save_path, "w") as file:
                     file.write(f"{op_data.autocorr_time}\n")
                 print(f"{job_name}: Saved ACT to {save_path}")
 
     def load_act(self):
         for job_name, op_data in self.items():
-            load_path = self.data_dir / job_name / "act.txt"
+            load_path = self.save_dir / job_name / "act.txt"
+            load_path_previous = self.data_dir / job_name / "act.txt"
             if load_path.exists():
                 with open(load_path, "r") as file:
+                    act = float(file.read().strip())
+                    op_data.autocorr_time = act
+                    print(f"{job_name}: Loaded ACT from {load_path}")
+            # TODO: Delete below after transfer all ACT
+            elif load_path_previous.exists():
+                with open(load_path_previous, "r") as file:
                     act = float(file.read().strip())
                     op_data.autocorr_time = act
                     print(f"{job_name}: Loaded ACT from {load_path}")
@@ -189,6 +252,7 @@ def load_dataset(data_dir: [str, Path], job_params: dict[str, dict],
 
         data = OPData(df, params)
         dataset[job_name] = data
+    dataset.load_relaxation_time()
     dataset.load_act()
     return dataset
 

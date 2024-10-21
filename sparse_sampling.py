@@ -51,7 +51,7 @@ class SparseSampling:
         for job_name, op_data in self.dataset.items():
             params = op_data.params[op]
             N_ind = op_data.independent_samples
-            op_values = op_data.df[op].values
+            op_values = op_data.df_prd[op].values
             x = op_values.mean()
             s_x = np.std(op_values, ddof=1) / np.sqrt(N_ind)
             x_u = ufloat(x, s_x)
@@ -82,7 +82,7 @@ class SparseSampling:
         op = self.op
         F_nu_lambda_list = []
         for job_name, op_data in self.dataset.items():
-            op_values = op_data.df[op].values
+            op_values = op_data.df_prd[op].values
             std = op_values.std()
 
             F_nu_lambda = 0.5 * np.log(2 * np.pi * std ** 2) / op_data.beta
@@ -116,7 +116,7 @@ class SparseSampling:
         sigma_dU_lambda_dx_list = []
         for job_name, data in self.dataset.items():
             params = data.params[column_name]
-            op_values = data.df[column_name].values
+            op_values = data.df_prd[column_name].values
             assert params["TYPE"] in ["parabola"], f"Unknown bias potential type: {params['type']}"
             if params["TYPE"] == "parabola":
                 op_star = params["STAR"]
@@ -138,6 +138,8 @@ class SparseSampling:
         self._sigma_dF_nu_dx = sigma_dF_nu_dx
 
     def plot_free_energy_plot_line(self, ax, delta_mu=None, T=None, label=None, x_range=None):
+        if T is None:
+            T = self.dataset.T.mean()
         if delta_mu is None:
             delta_mu = 0
         x_u = self.x_u
