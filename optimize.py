@@ -2,7 +2,7 @@
 # Date Created: 2/2/24
 import numpy as np
 from scipy.optimize import minimize, newton
-from autograd import value_and_grad, grad
+from autograd import value_and_grad, grad, hessian
 import autograd.numpy as agnp
 
 
@@ -53,7 +53,7 @@ def self_consistency(f, x0, max_iter=10000, tol=1e-10, normalize=True, iprint=-1
         raise ConvergenceError(f"Self-consistency method failed to converge after {max_iter} iterations.")
 
 
-def LBFGS(f, x0, args=(), iprint=-1):
+def LBFGSB(f, x0, args=(), iprint=-1):
     """
     Minimize a given function using the L-BFGS-B algorithm, a quasi-Newton method for optimization.
 
@@ -67,14 +67,14 @@ def LBFGS(f, x0, args=(), iprint=-1):
     result = minimize(value_and_grad(f), x0, args=args, method='L-BFGS-B', jac=True, options={"iprint": iprint})
     if result.success:
         if iprint >= 0:
-            print("LBFGS method converged.")
+            print("L-BFGS-B method converged.")
         return result.x
     else:
-        raise ConvergenceError("LBFGS method failed to converge.")
+        raise ConvergenceError("L-BFGS-B method failed to converge.")
 
 
 def newton_raphson(f, x0, args=(), iprint=-1):
-    root, converged, zero_der = newton(f, x0, args=args, full_output=True)
+    root, converged, zero_der = minimize(value_and_grad(f), x0, args=args, method="Newton-CG", jac=True, hess=hessian(f), options={"iprint": iprint})
     print()
     if converged:
         return root

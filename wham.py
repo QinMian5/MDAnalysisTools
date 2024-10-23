@@ -14,7 +14,7 @@ import uncertainties.unumpy as unp
 
 from utils import calculate_histogram_parameters, convert_unit
 from op_dataset import OPDataset
-from optimize import LBFGS, newton_raphson, alogsumexp
+from optimize import LBFGSB, newton_raphson, alogsumexp
 from utils_plot import create_fig_ax, save_figure, plot_with_error_bar
 
 
@@ -38,18 +38,18 @@ class BinlessWHAM:
         _, bin_edges = np.histogram([], bins=num_bins, range=bin_range)
         self.bin_midpoint = (bin_edges[1:] + bin_edges[:-1]) / 2
 
-    def calculate(self, with_uncertainties=False):
+    def calculate(self, with_uncertainties=False, n_iter=1000):
         energy = self.wham(bootstrap=False)
         if with_uncertainties:
             energy_list = []
-            for i in tqdm(range(1000)):
+            for i in tqdm(range(n_iter)):
                 energy_bootstrap = self.wham(bootstrap=True)
-                # TODO: align
-                energy_list.append(energy_bootstrap)
+                shift = np.mean(energy - energy_bootstrap)
+                energy_bootstrap_shifted = energy_bootstrap + shift
+                energy_list.append(energy_bootstrap_shifted)
             energy_array = np.stack(energy_list, axis=0)
             energy_mean = np.mean(energy_array, axis=0)
             energy_std = np.std(energy_array, axis=0, ddof=1)
-            # TODO: check Gaussian
             energy = unp.uarray(energy_mean, energy_std)
         self.energy = energy
 
@@ -58,7 +58,7 @@ class BinlessWHAM:
         N_i = []
         all_coord = []
         for _, op_data in self.dataset.items():
-            df = op_data.df_bootstrap if bootstrap else op_data.df_prd
+            df = op_data.df_block_bootstrap if bootstrap else op_data.df_prd
             N_i.append(len(df))
             coord = df[op_in].values
             all_coord.append(coord)
@@ -75,8 +75,9 @@ class BinlessWHAM:
         Ui_Zj = np.stack(Ui_Zj, axis=0)
         # LBFGS
         F_i0 = np.zeros(N_i.shape[0])
-        F_i_temp = LBFGS(self.NLL, F_i0, args=(N_i, N_tot, Ui_Zj, self.dataset.beta), iprint=-1)
-        F_i = newton_raphson(self.NLL, F_i_temp, args=(N_i, N_tot, Ui_Zj, self.dataset.beta),)
+        F_i_temp = LBFGSB(self.NLL, F_i0, args=(N_i, N_tot, Ui_Zj, self.dataset.beta), iprint=-1)
+        # F_i = newton_raphson(self.NLL, F_i_temp, args=(N_i, N_tot, Ui_Zj, self.dataset.beta),)
+        F_i = F_i_temp
         F_i = F_i.reshape(-1, 1)
         self.F_i = F_i
 

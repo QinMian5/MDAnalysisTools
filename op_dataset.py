@@ -74,9 +74,20 @@ class OPData:
     @property
     def df_bootstrap(self):
         df = self.df_prd
-        # TODO: Use block bootstrapping
         resampled_df = df.sample(n=self.independent_samples, replace=True)
         return resampled_df
+
+    @property
+    def df_block_bootstrap(self):
+        df = self.df_prd
+        N_block = self.independent_samples
+        block_size = int(len(df) / N_block)
+        index_start = np.random.randint(0, len(df) - block_size + 1, size=(N_block,))
+        df_list = []
+        for index in index_start:
+            df_list.append(df.iloc[index:index + block_size])
+        df_bb = pd.concat(df_list, axis=0)
+        return df_bb
 
     @property
     def df_original(self):
