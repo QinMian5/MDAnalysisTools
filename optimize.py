@@ -1,8 +1,8 @@
 # Author: Mian Qin
 # Date Created: 2/2/24
 import numpy as np
-from scipy.optimize import minimize
-from autograd import value_and_grad
+from scipy.optimize import minimize, newton
+from autograd import value_and_grad, grad
 import autograd.numpy as agnp
 
 
@@ -73,12 +73,11 @@ def LBFGS(f, x0, args=(), iprint=-1):
         raise ConvergenceError("LBFGS method failed to converge.")
 
 
-def newton_CG(f, x0, args=(), iprint=-1):
-    result = minimize(value_and_grad(f), x0, args=args, method='Newton-CG', jac=True, options={"iprint": iprint})
-    if result.success:
-        if iprint >= 0:
-            print("Newton-CG method converged.")
-        return result.x
+def newton_raphson(f, x0, args=(), iprint=-1):
+    root, converged, zero_der = newton(f, x0, args=args, full_output=True)
+    print()
+    if converged:
+        return root
     else:
         raise ConvergenceError("Newton-CG method failed to converge.")
 

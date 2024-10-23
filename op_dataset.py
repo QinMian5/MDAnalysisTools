@@ -227,12 +227,13 @@ class OPDataset(OrderedDict[str, OPData]):
                     print(f"{job_name}: Loaded ACT from {load_path}")
 
 
-def load_dataset(data_dir: [str, Path], job_params: dict[str, dict],
+def load_dataset(data_dir: [str, Path], job_params: dict[str, dict], file_type: str,
                  column_names: list[str], column_types: dict[str, type]) -> OPDataset:
     """
 
     :param data_dir: Directory path containing data files.
     :param job_params: Job parameters.
+    :param file_type: .csv or .out file.
     :param column_names: A list of strings specifying the column names of the data.
     :param column_types: A dictionary specifying the data types (int, float, etc.) of columns.
                          Only columns specified in column_types will be retained; all others will be disregarded.
@@ -242,8 +243,12 @@ def load_dataset(data_dir: [str, Path], job_params: dict[str, dict],
     data_dir = Path(data_dir)
 
     for job_name, params in job_params.items():
-        # Read the file into a DataFrame, using whitespace as delimiter
-        df = pd.read_csv(data_dir / job_name / "op.out", sep=r'\s+', header=None, names=column_names, comment='#')
+        if file_type == "csv":
+            op_file_path = data_dir / job_name / "op_combined.csv"
+            df = pd.read_csv(op_file_path, sep=',', header=0, names=column_names, comment='#')
+        else:
+            op_file_path = data_dir / job_name / "op.out"
+            df = pd.read_csv(op_file_path, sep=r'\s+', header=None, names=column_names, comment='#')
         # Keep only columns present in column_types and drop others
         df = df.loc[:, df.columns.intersection(column_types.keys())]
         # Convert the types of the columns as specified in column_types

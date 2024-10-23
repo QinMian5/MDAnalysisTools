@@ -14,14 +14,15 @@ import uncertainties.unumpy as unp
 
 from utils import calculate_histogram_parameters, convert_unit
 from op_dataset import OPDataset
-from optimize import LBFGS, newton_CG, alogsumexp
+from optimize import LBFGS, newton_raphson, alogsumexp
 from utils_plot import create_fig_ax, save_figure, plot_with_error_bar
 
 
 class BinlessWHAM:
-    def __init__(self, dataset: OPDataset, op: str, num_bins=None, bin_width=None, bin_range=None):
+    def __init__(self, dataset: OPDataset, op_in: list[str], op_out: str, num_bins=None, bin_width=None, bin_range=None):
         self.dataset = dataset
-        self.op = op
+        self.op_in = op_in
+        self.op_out = op_out
         self.num_bins = num_bins
         self.bin_width = bin_width
         self.bin_range = bin_range
@@ -33,7 +34,7 @@ class BinlessWHAM:
         self.F_i: None | np.ndarray = None
         self.energy: None | np.ndarray = None
 
-        num_bins, bin_range = calculate_histogram_parameters(self.dataset, self.op, self.num_bins, self.bin_width, self.bin_range)
+        num_bins, bin_range = calculate_histogram_parameters(self.dataset, self.op_out, self.num_bins, self.bin_width, self.bin_range)
         _, bin_edges = np.histogram([], bins=num_bins, range=bin_range)
         self.bin_midpoint = (bin_edges[1:] + bin_edges[:-1]) / 2
 
@@ -53,19 +54,19 @@ class BinlessWHAM:
         self.energy = energy
 
     def wham(self, bootstrap=False):
-        op = [self.op]
+        op_in = self.op_in
         N_i = []
         all_coord = []
         for _, op_data in self.dataset.items():
             df = op_data.df_bootstrap if bootstrap else op_data.df_prd
             N_i.append(len(df))
-            coord = df[op].values
+            coord = df[op_in].values
             all_coord.append(coord)
         N_i = np.array(N_i).reshape(-1, 1)
         N_tot = N_i.sum()
         all_coord = np.concatenate(all_coord, axis=0)
         coordinates = {}
-        for column_name, coord in zip(op, all_coord.T):
+        for column_name, coord in zip(op_in, all_coord.T):
             coordinates[column_name] = coord
         Ui_Zj = []  # bias potential
         for job_name, op_data in self.dataset.items():
@@ -75,13 +76,13 @@ class BinlessWHAM:
         # LBFGS
         F_i0 = np.zeros(N_i.shape[0])
         F_i_temp = LBFGS(self.NLL, F_i0, args=(N_i, N_tot, Ui_Zj, self.dataset.beta), iprint=-1)
-        F_i = newton_CG(self.NLL, F_i_temp, args=(N_i, N_tot, Ui_Zj, self.dataset.beta), iprint=-1)
+        F_i = newton_raphson(self.NLL, F_i_temp, args=(N_i, N_tot, Ui_Zj, self.dataset.beta),)
         F_i = F_i.reshape(-1, 1)
         self.F_i = F_i
 
-        num_bins, bin_range = calculate_histogram_parameters(self.dataset, op, self.num_bins, self.bin_width, self.bin_range)
+        num_bins, bin_range = calculate_histogram_parameters(self.dataset, op_in, self.num_bins, self.bin_width, self.bin_range)
         beta = self.dataset.beta
-        Z_j = coordinates[op[0]]
+        Z_j = coordinates[op_in[0]]
         W_j = 1 / (np.sum(N_i * np.exp(F_i - beta * Ui_Zj), axis=0))
         hist_wj, bin_edges = np.histogram(Z_j, bins=num_bins, range=bin_range, weights=W_j)
         p_wj = hist_wj / np.sum(hist_wj)
@@ -108,7 +109,7 @@ class BinlessWHAM:
         return A
 
     def plot(self, save_fig=True, save_dir=Path("./figure")):
-        op = self.op
+        op = self.op_in
         title = "Free Energy from WHAM"
         x_label = f"{op}"
         y_label = r"$\beta F$"

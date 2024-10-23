@@ -48,9 +48,10 @@ def read_data(rho, process) -> OPDataset:
     dataset: OPDataset = load_dataset(
         data_dir=data_dir,
         job_params=job_params,
-        column_names=["t", "QBAR", "box.N", "box.Ntilde", "bias_qbar.value"],
-        column_types={"t": float, "QBAR": float, "box.N": int,
-                      "box.Ntilde": float, "bias_qbar.value": float},
+        file_type="csv",
+        column_names=["t", "QBAR", "box.N", "box.Ntilde", "bias_qbar.value", "lambda_with_PI", "lambda_chillplus"],
+        column_types={"t": float, "QBAR": float, "box.N": int, "box.Ntilde": float, "bias_qbar.value": float,
+                      "lambda_with_PI": int, "lambda_chillplus": int},
     )
     return dataset
 
@@ -92,19 +93,23 @@ def calc_plot_save(rho, process):
     figure_save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}/figure"
     op = "QBAR"
     dataset = read_data(rho, process)
-    eda = EDA(dataset, op, figure_save_dir)
-    eda.determine_relaxation_time()
-    eda.calculate_acf()
-    eda.determine_autocorr_time(figure_save_dir, ignore_previous=0)
-    eda.plot_op(save_dir=figure_save_dir)
-    eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
-    eda.plot_acf(save_dir=figure_save_dir)
-    eda.plot_act(save_dir=figure_save_dir)
-    ss = SparseSampling(dataset, op)
-    ss.calculate()
-    ss.plot_free_energy(save_dir=figure_save_dir)
-    ss.plot_different_DeltaT(save_dir=figure_save_dir)
-    ss.plot_detail(save_dir=figure_save_dir)
+    # eda = EDA(dataset, op, figure_save_dir)
+    # eda.determine_relaxation_time()
+    # eda.calculate_acf()
+    # eda.determine_autocorr_time(figure_save_dir, ignore_previous=0)
+    # eda.plot_op(save_dir=figure_save_dir)
+    # eda.plot_histogram(bin_width=2, bin_range=(0, 1800), save_dir=figure_save_dir)
+    # eda.plot_acf(save_dir=figure_save_dir)
+    # eda.plot_act(save_dir=figure_save_dir)
+    # ss = SparseSampling(dataset, op)
+    # ss.calculate()
+    # ss.plot_free_energy(save_dir=figure_save_dir)
+    # ss.plot_different_DeltaT(save_dir=figure_save_dir)
+    # ss.plot_detail(save_dir=figure_save_dir)
+    op_in = ["QBAR", "lambda_with_PI"]
+    op_out = "lambda_with_PI"
+    wham = BinlessWHAM(dataset, op_in, op_out, bin_range=(0, 1800), bin_width=5)
+    wham.calculate(with_uncertainties=False)
 
 
 def calc_plot_lambda_q(rho, process):
