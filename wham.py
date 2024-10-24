@@ -19,6 +19,7 @@ from utils_plot import create_fig_ax, save_figure, plot_with_error_bar
 
 
 class BinlessWHAM:
+    data_to_save = ["bin_midpoint", "energy"]
     def __init__(self, dataset: OPDataset, op_in: list[str], op_out: str, num_bins=None, bin_width=None, bin_range=None):
         self.dataset = dataset
         self.op_in = op_in
@@ -26,6 +27,7 @@ class BinlessWHAM:
         self.num_bins = num_bins
         self.bin_width = bin_width
         self.bin_range = bin_range
+        self.save_dir = self.dataset.save_dir / "wham"
 
         self.N_i: None | np.ndarray = None
         self.N_tot: None | int = None
@@ -74,16 +76,20 @@ class BinlessWHAM:
             Ui_Zj.append(bias)
         Ui_Zj = np.stack(Ui_Zj, axis=0)
         # LBFGS
-        F_i0 = np.zeros(N_i.shape[0])
+        if self.F_i is None:
+            F_i0 = np.zeros(N_i.shape[0])
+        else:
+            F_i0 = self.F_i.flatten()
         F_i_temp = LBFGSB(self.NLL, F_i0, args=(N_i, N_tot, Ui_Zj, self.dataset.beta), iprint=-1)
-        # F_i = newton_raphson(self.NLL, F_i_temp, args=(N_i, N_tot, Ui_Zj, self.dataset.beta),)
         F_i = F_i_temp
+        # F_i = newton_raphson(self.NLL, F_i_temp, args=(N_i, N_tot, Ui_Zj, self.dataset.beta),)
         F_i = F_i.reshape(-1, 1)
+        F_i = F_i - F_i.mean()
         self.F_i = F_i
 
-        num_bins, bin_range = calculate_histogram_parameters(self.dataset, op_in, self.num_bins, self.bin_width, self.bin_range)
+        num_bins, bin_range = calculate_histogram_parameters(self.dataset, self.op_out, self.num_bins, self.bin_width, self.bin_range)
         beta = self.dataset.beta
-        Z_j = coordinates[op_in[0]]
+        Z_j = coordinates[self.op_out]
         W_j = 1 / (np.sum(N_i * np.exp(F_i - beta * Ui_Zj), axis=0))
         hist_wj, bin_edges = np.histogram(Z_j, bins=num_bins, range=bin_range, weights=W_j)
         p_wj = hist_wj / np.sum(hist_wj)
@@ -109,24 +115,47 @@ class BinlessWHAM:
             alogsumexp(a=F_i - beta * Ui_Zj, b=N_i / N_tot, axis=0, keepdims=True), axis=1, keepdims=True)
         return A
 
-    def plot(self, save_fig=True, save_dir=Path("./figure")):
-        op = self.op_in
-        title = "Free Energy from WHAM"
+    def plot_free_energy_plot_line(self, ax, delta_mu=None, T=None, label=None, x_range=None):
+        if T is None:
+            T = self.dataset.T.mean()
+        if delta_mu is None:
+            delta_mu = 0
+        x = self.bin_midpoint
+        energy = self.energy
+        if x_range is not None:
+            index = (x_range[0] <= x) & (x <= x_range[1])
+            x = x[index]
+            energy = energy[index]
+
+        line = plot_with_error_bar(ax, x, convert_unit(energy + delta_mu * x, T=T), "o-", label=label)
+        return line
+
+    def plot_free_energy(self, save_dir=Path("./figure")):
+        op = self.op_out
+        title = "Free Energy"
         x_label = f"{op}"
-        y_label = r"$\beta F$"
+        y_label = fr"$\beta F$"
         fig, ax = create_fig_ax(title, x_label, y_label)
-        x, energy = self.energy
-        #TODO: uncertainty analysis
-        ax.plot(x, convert_unit(energy), label="BinlessWHAM")
-        ax.legend()
-        if save_fig:
-            save_dir.mkdir(exist_ok=True)
-            save_path = save_dir / f"WHAM_{column_name}.png"
-            plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-            print(f"Saved the figure to {save_path.resolve()}")
-        else:
-            plt.show()
+        self.plot_free_energy_plot_line(ax)
+
+        save_path = save_dir / f"wham_free_energy_{op}.png"
+        save_figure(fig, save_path)
         plt.close(fig)
+
+    def save_result(self):
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+        for name in self.data_to_save:
+            array = getattr(self, name)
+            save_path = self.save_dir / f"{name}.npy"
+            np.save(save_path, array)
+            print(f"Saved self.{name} to {save_path}.")
+
+    def load_result(self):
+        for name in self.data_to_save:
+            save_path = self.save_dir / f"{name}.npy"
+            array = np.load(save_path, allow_pickle=True)
+            setattr(self, name, array)
+            print(f"Loaded self.{name} from {save_path}.")
 
 
 def main():

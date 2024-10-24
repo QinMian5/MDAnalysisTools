@@ -73,11 +73,12 @@ def LBFGSB(f, x0, args=(), iprint=-1):
         raise ConvergenceError("L-BFGS-B method failed to converge.")
 
 
-def newton_raphson(f, x0, args=(), iprint=-1):
-    root, converged, zero_der = minimize(value_and_grad(f), x0, args=args, method="Newton-CG", jac=True, hess=hessian(f), options={"iprint": iprint})
-    print()
-    if converged:
-        return root
+def newton_raphson(f, x0, args=(), iprint=-1,):
+    result = minimize(value_and_grad(f), x0, args=args, method="Newton-CG", jac=True, hess=hessian(f))
+    if result.success:
+        if iprint >= 0:
+            print("Newton-CG method converged.")
+        return result.x
     else:
         raise ConvergenceError("Newton-CG method failed to converge.")
 

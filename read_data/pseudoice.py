@@ -13,7 +13,7 @@ from scipy.stats import pearsonr
 import uncertainties.unumpy as unp
 
 from utils import convert_unit, read_solid_like_atoms
-from utils_plot import create_fig_ax, save_figure
+from utils_plot import create_fig_ax, save_figure, plot_with_error_bar, plot_with_error_band
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
 from sparse_sampling import SparseSampling
@@ -53,6 +53,13 @@ def read_data(rho, process) -> OPDataset:
         column_types={"t": float, "QBAR": float, "box.N": int, "box.Ntilde": float, "bias_qbar.value": float,
                       "lambda_with_PI": int, "lambda_chillplus": int},
     )
+    # dataset: OPDataset = load_dataset(
+    #     data_dir=data_dir,
+    #     job_params=job_params,
+    #     file_type="out",
+    #     column_names=["t", "QBAR", "box.N", "box.Ntilde", "bias_qbar.value"],
+    #     column_types={"t": float, "QBAR": float, "box.N": int, "box.Ntilde": float, "bias_qbar.value": float},
+    # )
     return dataset
 
 
@@ -106,92 +113,81 @@ def calc_plot_save(rho, process):
     # ss.plot_free_energy(save_dir=figure_save_dir)
     # ss.plot_different_DeltaT(save_dir=figure_save_dir)
     # ss.plot_detail(save_dir=figure_save_dir)
+
     op_in = ["QBAR", "lambda_with_PI"]
     op_out = "lambda_with_PI"
-    wham = BinlessWHAM(dataset, op_in, op_out, bin_range=(0, 1800), bin_width=5)
-    wham.calculate(with_uncertainties=False)
+    wham = BinlessWHAM(dataset, op_in, op_out)
+    # wham.load_result()
+    wham.calculate(with_uncertainties=True, n_iter=300)
+    wham.save_result()
+    wham.plot_free_energy(save_dir=figure_save_dir)
 
 
 def calc_plot_lambda_q(rho, process):
     figure_save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}/figure"
     dataset = read_data(rho, process)
-    qbar_dict = get_qbar_from_dataset(dataset)
-    q_dict = read_lambda(rho, _filename_index, column_name="q")
-    lambda_dict = read_lambda(rho, _filename_index4, column_name="lambda")
-    job_params = _load_params(rho, process)
 
-    qbar_star_list = []
-    qbar_avg_list = []
-    q_avg_list = []
-    lambda_avg_list = []
-    for job_name in job_params:
-        qbar_star = job_params[job_name]["QBAR"]["CENTER"]
-        qbar_star_list.append(qbar_star)
+    qbar_list = []
+    lambda_chillplus_list = []
+    lambda_with_PI_list = []
+    for job_name, op_data in dataset.items():
+        df = op_data.df_prd
+        qbar = df["QBAR"].values
+        lambda_with_PI = df["lambda_with_PI"].values
+        lambda_chillplus = df["lambda_chillplus"].values
+        qbar_list.append(qbar)
+        lambda_chillplus_list.append(lambda_chillplus)
+        lambda_with_PI_list.append(lambda_with_PI)
 
-        df = qbar_dict[job_name].merge(q_dict[job_name], on="t").merge(lambda_dict[job_name], on="t")
-        qbar_array = df["qbar"].values
-        qbar_avg = qbar_array.mean()
-        qbar_avg_list.append(qbar_avg)
-        q_array = df["q"].values
-        q_avg = q_array.mean()
-        q_avg_list.append(q_avg)
-        lambda_array = df["lambda"].values
-        lambda_avg = lambda_array.mean()
-        lambda_avg_list.append(lambda_avg)
+    qbar_array = np.concatenate(qbar_list)
+    lambda_chillplus_array = np.concatenate(lambda_chillplus_list)
+    lambda_with_PI_array = np.concatenate(lambda_with_PI_list)
 
-    qbar_star_array = np.array(qbar_star_list)
-    qbar_avg_array = np.array(qbar_avg_list)
-    q_avg_array = np.array(q_avg_list)
-    lambda_avg_array = np.array(lambda_avg_list)
+    title = rf"Number of Ice-like Water, $\rho = {rho}$, {process}"
+    x_label = "qbar"
+    y_label = r"$\lambda$"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+    ax.plot(qbar_array, lambda_chillplus_array, "b+", label="lambda_chillplus")
+    ax.plot(qbar_array, lambda_with_PI_array, 'g+', label="lambda_with_PI")
 
-    # Plot q_avg, lambda_avg as a function of q_star
-    plt.style.use("presentation.mplstyle")
-    fig, ax = plt.subplots()
-    ax.plot(qbar_star_array, qbar_avg_array, "b-o", label="qbar")
-    ax.plot(qbar_star_array, q_avg_array, 'g-o', label="q")
-    ax.plot(qbar_star_array, lambda_avg_array, 'r-o', label="lambda")
     ax.legend()
-    ax.set_title(rf"Number of Ice-like Molecules, $\rho = {rho}$")
-    ax.set_xlabel("$q^*$")
-    ax.set_ylabel("number of ice-like molecules")
-    save_path = figure_save_dir / "number_of_ice.png"
-    plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-    print(f"Saved the figure to {save_path.resolve()}")
+    save_path = figure_save_dir / "lambda_qbar.png"
+    save_figure(fig, save_path)
     plt.close(fig)
 
     # Fit lambda_avg as a function of q_avg
-    def linear(x, p0, p1):
-        return p0 * x + p1
-
-    p_opt, p_cov = curve_fit(linear, q_avg_array, lambda_avg_array)
-    p_err = np.sqrt(np.diag(p_cov))
-    r, _ = pearsonr(q_avg_array, lambda_avg_array)
-    magnitude = -np.floor(np.log10(np.abs(p_err))).astype(int) + 1
-    magnitude_r = -np.floor(np.log10(1 - r)).astype(int) + 1
-    x = np.linspace(q_avg_array.min(), q_avg_array.max(), 100)
-    y = linear(x, *p_opt)
-
-    fig, ax = plt.subplots()
-    ax.set_title(rf"$\rho = {rho}$")
-    ax.set_xlabel("q")
-    ax.set_ylabel(r"$\lambda$")
-    ax.plot(q_avg_array, lambda_avg_array, "bo")
-    ax.plot(x, y, "r-")
-    text = '\n'.join([rf"$\lambda = k q + b$",
-                      rf"$k = {p_opt[0]:.{magnitude[0]}f} \pm {p_err[0]:.{magnitude[0]}f}$",
-                      rf"$b = {p_opt[1]:.{magnitude[1]}f} \pm {p_err[1]:.{magnitude[1]}f}$",
-                      rf"$r = {r:.{magnitude_r}f}$"])
-    ax.text(0.1, 0.9, text, transform=ax.transAxes, fontsize=14, verticalalignment='top')
-
-    save_path = figure_save_dir / "lambda_q.png"
-    plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
-    print(f"Saved the figure to {save_path.resolve()}")
-    plt.close(fig)
-
-    save_path = figure_save_dir / _filename_lambda_q
-    with open(save_path, 'w') as file:
-        json.dump([p_opt[0], p_err[0]], file)
-        print(f"Saved the fitting parameters to {save_path.resolve()}")
+    # def linear(x, p0, p1):
+    #     return p0 * x + p1
+    #
+    # p_opt, p_cov = curve_fit(linear, q_avg_array, lambda_avg_array)
+    # p_err = np.sqrt(np.diag(p_cov))
+    # r, _ = pearsonr(q_avg_array, lambda_avg_array)
+    # magnitude = -np.floor(np.log10(np.abs(p_err))).astype(int) + 1
+    # magnitude_r = -np.floor(np.log10(1 - r)).astype(int) + 1
+    # x = np.linspace(q_avg_array.min(), q_avg_array.max(), 100)
+    # y = linear(x, *p_opt)
+    #
+    # fig, ax = plt.subplots()
+    # ax.set_title(rf"$\rho = {rho}$")
+    # ax.set_xlabel("q")
+    # ax.set_ylabel(r"$\lambda$")
+    # ax.plot(q_avg_array, lambda_avg_array, "bo")
+    # ax.plot(x, y, "r-")
+    # text = '\n'.join([rf"$\lambda = k q + b$",
+    #                   rf"$k = {p_opt[0]:.{magnitude[0]}f} \pm {p_err[0]:.{magnitude[0]}f}$",
+    #                   rf"$b = {p_opt[1]:.{magnitude[1]}f} \pm {p_err[1]:.{magnitude[1]}f}$",
+    #                   rf"$r = {r:.{magnitude_r}f}$"])
+    # ax.text(0.1, 0.9, text, transform=ax.transAxes, fontsize=14, verticalalignment='top')
+    #
+    # save_path = figure_save_dir / "lambda_q.png"
+    # plt.savefig(save_path, bbox_inches="tight", pad_inches=0.1)
+    # print(f"Saved the figure to {save_path.resolve()}")
+    # plt.close(fig)
+    #
+    # save_path = figure_save_dir / _filename_lambda_q
+    # with open(save_path, 'w') as file:
+    #     json.dump([p_opt[0], p_err[0]], file)
+    #     print(f"Saved the fitting parameters to {save_path.resolve()}")
 
 
 def plot_g_lambda(rho):
@@ -226,49 +222,69 @@ def plot_g_lambda(rho):
     plt.close(fig)
 
 
+def linear(x, k, b):
+    return k * x + b
+
+
 def plot_difference(rho):
     figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
     op = "QBAR"
     process_list = ["melting_300K", "melting_270K"]
 
     title = fr"Free Energy Difference, $\alpha = {rho}$, Ref: {process_list[0]}"
-    x_label = "qbar"
+    x_label = "lambda"
     y_label = fr"$F$ (kJ/mol)"
     fig, ax = create_fig_ax(title, x_label, y_label)
     fig2, ax2 = create_fig_ax("Free Energy $-$ Linear Fit", x_label, y_label)
 
     process_ref = process_list[0]
     dataset = read_data(rho, process_ref)
-    ss = SparseSampling(dataset, op)
-    ss.calculate()
-    x_u_ref = ss.x_u
-    x_ref = unp.nominal_values(x_u_ref)
-    F_nu_u_ref = unp.nominal_values(ss.F_nu_u)
-    # wham = BinlessWHAM(dataset, op, bin_width=5, bin_range=(0, 1800))
-    # wham.calculate()
-    # x_ref = wham.bin_midpoint
-    # F_ref = wham.energy
+    # ss = SparseSampling(dataset, op)
+    # ss.calculate()
+    # x_u_ref = ss.x_u
+    # x_ref = unp.nominal_values(x_u_ref)
+    # F_nu_u_ref = unp.nominal_values(ss.F_nu_u)
+    op_in = ["QBAR", "lambda_with_PI"]
+    op_out = "lambda_with_PI"
+    wham = BinlessWHAM(dataset, op_in, op_out)
+    wham.load_result()
+    x_ref = wham.bin_midpoint
+    F_u_ref = wham.energy
+    F_ref = unp.nominal_values(F_u_ref)
+    s_F_ref = unp.std_devs(F_u_ref)
     for process in process_list[1:]:
         dataset = read_data(rho, process)
-        ss = SparseSampling(dataset, op)
-        ss.calculate()
-        x_u = ss.x_u
-        x = unp.nominal_values(x_u)
-        F_nu_u = unp.nominal_values(ss.F_nu_u)
+        # ss = SparseSampling(dataset, op)
+        # ss.calculate()
+        # x_u = ss.x_u
+        # x = unp.nominal_values(x_u)
+        # F_nu_u = unp.nominal_values(ss.F_nu_u)
+        wham = BinlessWHAM(dataset, op_in, op_out)
+        wham.load_result()
+        x = wham.bin_midpoint
+        F_u = wham.energy
+        F = unp.nominal_values(F_u)
+        s_F = unp.std_devs(F_u)
         x_plot = np.linspace(max(x_ref.min(), x.min()), min(x_ref.max(), x.max()), 1000)
-        y_interp = np.interp(x_plot, x, F_nu_u)
-        y_interp_ref = np.interp(x_plot, x_ref, F_nu_u_ref)
-        y_plot = y_interp - y_interp_ref
-        p = np.polyfit(x_plot, y_plot, 1)
-        y_fit = np.polyval(p, x_plot)
-        delta_y = y_plot - y_fit
-        ax.plot(x_plot, y_plot, "-", label=f"{process}")
-        ax.plot(x_plot, y_fit, "--", label=f"linear fit of {process}, $y = {p[0]:.3}x + {p[1]:.3}$")
-        ax2.plot(x_plot, delta_y, "-", label=process)
-        # wham = BinlessWHAM(dataset, op, bin_width=5, bin_range=(0, 1800))
-        # wham.calculate()
-        # F = wham.energy
-        # ax.plot(x_ref, F - F_ref, "o-", label=process)
+        y_interp = np.interp(x_plot, x, F)
+        s_y_interp = np.interp(x_plot, x, s_F)
+        y_interp_ref = np.interp(x_plot, x_ref, F_ref)
+        s_y_interp_ref = np.interp(x_plot, x_ref, s_F_ref)
+        y_interp_u = unp.uarray(y_interp, s_y_interp)
+        y_interp_ref_u = unp.uarray(y_interp_ref, s_y_interp_ref)
+        y_plot_u = y_interp_u - y_interp_ref_u
+        y_plot = unp.nominal_values(y_plot_u)
+        s_y_plot = unp.std_devs(y_plot_u)
+        # Fit data where
+        index = (x_plot > 200) & (x_plot < 800)
+        p, p_cov = curve_fit(linear, x_plot[index], y_plot[index], sigma=s_y_plot[index], absolute_sigma=True)
+        s_p = np.sqrt(np.diag(p_cov))
+        p_u = unp.uarray(p, s_p)
+        y_fit = linear(x_plot, *p_u)
+        delta_y_u = y_plot_u - y_fit
+        plot_with_error_band(ax, x_plot, y_plot_u, "-", label=f"{process}")
+        plot_with_error_band(ax, x_plot, y_fit, "--", label=fr"linear fit of {process}, $y = ({p[0]:.4f}\pm{s_p[0]:.4f})x + ({p[1]:.1f}\pm{s_p[1]:.1f})$")
+        plot_with_error_band(ax2, x_plot, delta_y_u, "-", label=f"{process}")
     ax.legend()
     ax2.legend()
     save_path = figure_save_dir / f"energy_difference_{rho}.png"
@@ -277,11 +293,12 @@ def plot_difference(rho):
     save_figure(fig2, save_path)
 
 
-def compare_melting_icing(rho):
+def compare_free_energy(rho):
     figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
 
     op = "QBAR"
     process_list = ["melting_270K", "melting_300K"]
+    # process_list = ["melting_300K", "icing_10ns", "icing_300K", "icing_constant_ramp_rate"]
     ss_list = []
     for process in process_list:
         dataset = read_data(rho, process)
@@ -316,12 +333,12 @@ def main():
     #     calc_plot_save(rho, process)
     process = "melting_270K"
     for rho in [1.0]:
-        calc_plot_save(rho, process)
-        # calc_plot_lambda_q(rho)
+        # calc_plot_save(rho, process)
+        # calc_plot_lambda_q(rho, process)
         # plot_g_lambda(rho)
 
-        # compare_melting_icing(rho)
-        # plot_difference(rho)
+        # compare_free_energy(rho)
+        plot_difference(rho)
 
 
 if __name__ == "__main__":
