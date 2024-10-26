@@ -118,7 +118,7 @@ def calc_plot_save(rho, process):
     op_out = "lambda_with_PI"
     wham = BinlessWHAM(dataset, op_in, op_out)
     # wham.load_result()
-    wham.calculate(with_uncertainties=True, n_iter=300)
+    wham.calculate(with_uncertainties=True, n_iter=1000)
     wham.save_result()
     wham.plot_free_energy(save_dir=figure_save_dir)
 
@@ -276,7 +276,7 @@ def plot_difference(rho):
         y_plot = unp.nominal_values(y_plot_u)
         s_y_plot = unp.std_devs(y_plot_u)
         # Fit data where
-        index = (x_plot > 200) & (x_plot < 800)
+        index = (x_plot > 1500) & (x_plot < 2800)
         p, p_cov = curve_fit(linear, x_plot[index], y_plot[index], sigma=s_y_plot[index], absolute_sigma=True)
         s_p = np.sqrt(np.diag(p_cov))
         p_u = unp.uarray(p, s_p)
@@ -297,8 +297,8 @@ def compare_free_energy(rho):
     figure_save_dir = home_path / f"/home/qinmian/data/gromacs/pseudoice/figure"
 
     op = "QBAR"
-    process_list = ["melting_270K", "melting_300K"]
-    # process_list = ["melting_300K", "icing_10ns", "icing_300K", "icing_constant_ramp_rate"]
+    # process_list = ["melting_270K", "melting_300K"]
+    process_list = ["melting_300K", "icing_300K_20p1ns", "icing_300K", "icing_constant_ramp_rate"]
     ss_list = []
     for process in process_list:
         dataset = read_data(rho, process)
@@ -331,12 +331,13 @@ def main():
     # process = "melting"
     # for rho in [1.0]:
     #     calc_plot_save(rho, process)
-    process = "melting_270K"
-    for rho in [1.0]:
-        # calc_plot_save(rho, process)
-        # calc_plot_lambda_q(rho, process)
-        # plot_g_lambda(rho)
+    # process = "melting_300K"
+    # rho = 1.0
+    # calc_plot_save(rho, process)
+    # calc_plot_lambda_q(rho, process)
+    # plot_g_lambda(rho)
 
+    for rho in [1.0]:
         # compare_free_energy(rho)
         plot_difference(rho)
 

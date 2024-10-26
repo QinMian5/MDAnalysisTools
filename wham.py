@@ -15,7 +15,7 @@ import uncertainties.unumpy as unp
 from utils import calculate_histogram_parameters, convert_unit
 from op_dataset import OPDataset
 from optimize import LBFGSB, newton_raphson, alogsumexp
-from utils_plot import create_fig_ax, save_figure, plot_with_error_bar
+from utils_plot import create_fig_ax, save_figure, plot_with_error_bar, plot_with_error_band
 
 
 class BinlessWHAM:
@@ -127,7 +127,7 @@ class BinlessWHAM:
             x = x[index]
             energy = energy[index]
 
-        line = plot_with_error_bar(ax, x, convert_unit(energy + delta_mu * x, T=T), "o-", label=label)
+        line = plot_with_error_band(ax, x, convert_unit(energy + delta_mu * x, T=T), "-", label=label)
         return line
 
     def plot_free_energy(self, save_dir=Path("./figure")):
