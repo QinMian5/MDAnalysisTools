@@ -134,11 +134,51 @@ class BinlessWHAM:
         op = self.op_out
         title = "Free Energy"
         x_label = f"{op}"
-        y_label = fr"$\beta F$"
+        y_label = fr"$\beta G$"
         fig, ax = create_fig_ax(title, x_label, y_label)
         self.plot_free_energy_plot_line(ax)
 
         save_path = save_dir / f"wham_free_energy_{op}.png"
+        save_figure(fig, save_path)
+        plt.close(fig)
+
+    def plot_different_DeltaT(self, save_dir=Path("./figure")):
+        T_m = 271  # K
+        Delta_H_m = 5.6  # kJ/mol
+        T_sim = np.mean(self.dataset.T)
+
+        title = r"Free Energy at Different $\Delta T$"
+        x_label = r"$\lambda$"
+        y_label = r"$\tilde{G}(\lambda;\Delta T)$"
+        fig, ax = create_fig_ax(title, x_label, y_label)
+        # ax.tick_params(axis='y')
+        self.plot_free_energy_plot_line(ax, label=r"Raw data (at $300\ \mathrm{K}$)")
+
+        for Delta_T in range(0, 85, 10):
+            T = T_m - Delta_T
+            Delta_mu = - Delta_H_m / T_m * (Delta_T + T_sim - T_m)
+            label = fr"${Delta_T}\ \mathrm{{K}}$"
+            self.plot_free_energy_plot_line(ax, delta_mu=Delta_mu, T=T, label=label)
+
+        ax.legend()
+        save_path = save_dir / f"wham_DeltaT.png"
+        save_figure(fig, save_path)
+        plt.close(fig)
+
+        title = r"Free Energy at Different $\Delta T$ (Zoomed In)"
+        x_label = r"$\lambda$"
+        y_label = r"$\tilde{G}(\lambda;\Delta T)$"
+        fig, ax = create_fig_ax(title, x_label, y_label)
+        # ax.tick_params(axis='y')
+        for Delta_T in range(0, 85, 5):
+            T = T_m - Delta_T
+            Delta_mu = - Delta_H_m / T_m * (Delta_T + T_sim - T_m)
+            label = fr"${Delta_T}\ {{\rm K}}$"
+            x_range = [0, 150]
+            self.plot_free_energy_plot_line(ax, delta_mu=Delta_mu, T=T, label=label, x_range=x_range)
+
+        ax.legend()
+        save_path = save_dir / f"wham_DeltaT_zoomed_in.png"
         save_figure(fig, save_path)
         plt.close(fig)
 

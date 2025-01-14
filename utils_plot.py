@@ -11,9 +11,9 @@ import uncertainties.unumpy as unp
 from PIL.ImageOps import contain
 
 
-def create_fig_ax(title, x_label, y_label) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
+def create_fig_ax(title, x_label, y_label, **kwargs) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
     plt.style.use("presentation.mplstyle")
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(**kwargs)
     ax.set_title(title)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)

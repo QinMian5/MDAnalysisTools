@@ -7,6 +7,8 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.widgets import SpanSelector, Button, TextBox
 from scipy.optimize import curve_fit
+from scipy.stats import gaussian_kde
+import scipy.constants as c
 import statsmodels.tsa.stattools
 from uncertainties import unumpy as unp
 
@@ -51,6 +53,7 @@ class EDA:
         for job_name, acf_u in self.acf_dict.items():
             if not ignore_previous and self.dataset[job_name].autocorr_time is not None:
                 continue
+            plt.style.use("default")
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
             t = self.dataset[job_name].df_prd["t"].values
             t = t - t[0]
@@ -206,7 +209,6 @@ class EDA:
     def plot_op(self, save_dir=Path("./figure")):
         figure_save_dir = save_dir / "op_detail"
         op = self.op
-        plt.style.use("presentation.mplstyle")
         for job_name, op_data in self.dataset.items():
             df = op_data.df_original
             t = df["t"].values
@@ -300,13 +302,15 @@ class EDA:
         title = f"Negative Log Histogram for {op}"
         x_label = f"{op}"
         y_label = r"$-\ln W$"
-        fig, ax = create_fig_ax(title, x_label, y_label)
+        figsize = (len(self.dataset), 6)
+        fig, ax = create_fig_ax(title, x_label, y_label, figsize=figsize)
+        colors = mpl.colormaps.get_cmap("rainbow")(np.linspace(0, 1, 7))
 
         num_bins, bin_range = calculate_histogram_parameters(self.dataset, op, num_bins, bin_width, bin_range)
         all_hist, bin_edges = np.histogram([], bins=num_bins, range=bin_range)
         bin_midpoints = (bin_edges[1:] + bin_edges[:-1]) / 2
-        for _, data in self.dataset.items():
-            df = data.df_prd
+        for i, (_, op_data) in enumerate(self.dataset.items()):
+            df = op_data.df_prd
             hist, _ = np.histogram(df[op], bins=num_bins, range=bin_range)
 
             valid_indices = hist >= 1
@@ -314,7 +318,7 @@ class EDA:
             negative_log_hist = -np.log(hist_non_zero)
             bin_midpoints_non_zero = bin_midpoints[valid_indices]
 
-            ax.plot(bin_midpoints_non_zero, negative_log_hist, marker="o")
+            ax.plot(bin_midpoints_non_zero, negative_log_hist, "-o", color=colors[i % 7])
 
             all_hist += hist
         valid_indices = all_hist >= 1
@@ -324,6 +328,52 @@ class EDA:
         ax.plot(bin_midpoints_non_zero, negative_log_all_hist, "-", color="black")
 
         save_path = save_dir / f"NLhist_{op}.png"
+        save_figure(fig, save_path)
+        plt.close(fig)
+
+    def plot_ddF(self, save_dir=Path("./figure")):
+        op = self.op
+        title = fr"$F''(x)$"
+        x_label = f"{op}"
+        y_label = r"$F''(x)$ (kJ/mol)"
+        fig, ax = create_fig_ax(title, x_label, y_label)
+
+        x_plot = []
+        y_plot = []
+        y_plot_kappa = []
+        for job_name, op_data in self.dataset.items():
+            df = op_data.df_prd
+            data_points = df[op]
+            # kde = gaussian_kde(data_points, bw_method="silverman")
+            # mean = np.mean(data_points)
+            # std = np.std(data_points)
+            # n_points = 1001
+            # x = np.linspace(mean - std, mean + std, n_points)
+            # dx = np.mean(np.diff(x))
+            # p = kde.evaluate(x)
+            # dp = np.gradient(p) / dx
+            # ddp = np.gradient(dp) / dx
+            # ddF = -c.k * op_data.T * (ddp * p - dp ** 2) / (p ** 2) * c.N_A / 1000
+            # line = ax.plot(x, ddF, marker="+")[0]
+
+            mean = np.mean(data_points)
+            sigma = np.std(data_points)
+            k = c.k * op_data.T / sigma ** 2 * c.N_A / 1000
+            kappa = op_data.params[op]["KAPPA"]
+
+            x_plot.append(mean)
+            y_plot.append(k)
+            y_plot_kappa.append(kappa)
+        x_plot = np.array(x_plot)
+        y_plot = np.array(y_plot)
+        y_plot_kappa = np.array(y_plot_kappa)
+        ax.plot(x_plot, y_plot_kappa, "r--o", label=fr"$U_b''(x)$")
+        ax.plot(x_plot, y_plot, "b-o", label=fr"$F_b''(x)$")
+        ax.plot(x_plot, y_plot - y_plot_kappa, "g-o", label=fr"$F_0''(x)$")
+
+        ax.legend()
+
+        save_path = save_dir / f"ddF_{op}.png"
         save_figure(fig, save_path)
         plt.close(fig)
 
