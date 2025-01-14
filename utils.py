@@ -74,8 +74,23 @@ def convert_unit(src_value: float | np.ndarray, src_unit="kJ/mol", dst_unit="kT"
     return dst_value
 
 
+def calculate_triangle_area(nodes, faces):
+    triangles = nodes[faces]
+
+    vec1 = triangles[:, 1, :] - triangles[:, 0, :]
+    vec2 = triangles[:, 2, :] - triangles[:, 0, :]
+    cross_product = np.cross(vec1, vec2)
+    areas = 0.5 * np.linalg.norm(cross_product, axis=1)
+
+    total_area = np.sum(areas)
+    return areas, total_area
+
+
 def main():
-    ...
+    nodes = np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0], [1, 0, 0]])
+    faces = np.array([[0, 1, 2], [1, 0, 2], [1, 2, 3]])
+    areas, total_area = calculate_triangle_area(nodes, faces)
+    print(areas)
 
 
 if __name__ == "__main__":
