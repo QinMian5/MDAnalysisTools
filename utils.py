@@ -56,7 +56,7 @@ def convert_unit(src_value: float | np.ndarray, src_unit="kJ/mol", dst_unit="kT"
         T = 300
     _valid_units = ["kJ/mol", "kT"]
     if src_unit not in _valid_units or dst_unit not in _valid_units:
-        raise ValueError("src_unit and dst_unit must be 'kJ/mol' or 'kT'")
+        raise ValueError(f"src_unit and dst_unit must be in {_valid_units}")
 
     if src_unit == "kJ/mol":
         value_in_SI = src_value * 1000 / c.N_A
@@ -75,14 +75,18 @@ def convert_unit(src_value: float | np.ndarray, src_unit="kJ/mol", dst_unit="kT"
 
 
 def calculate_triangle_area(nodes, faces):
-    triangles = nodes[faces]
+    if len(faces) != 0:
+        triangles = nodes[faces]
 
-    vec1 = triangles[:, 1, :] - triangles[:, 0, :]
-    vec2 = triangles[:, 2, :] - triangles[:, 0, :]
-    cross_product = np.cross(vec1, vec2)
-    areas = 0.5 * np.linalg.norm(cross_product, axis=1)
+        vec1 = triangles[:, 1, :] - triangles[:, 0, :]
+        vec2 = triangles[:, 2, :] - triangles[:, 0, :]
+        cross_product = np.cross(vec1, vec2)
+        areas = 0.5 * np.linalg.norm(cross_product, axis=1)
 
-    total_area = np.sum(areas)
+        total_area = np.sum(areas)
+    else:
+        areas = []
+        total_area = 0
     return areas, total_area
 
 

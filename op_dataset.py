@@ -224,15 +224,8 @@ class OPDataset(OrderedDict[str, OPData]):
     def load_act(self):
         for job_name, op_data in self.items():
             load_path = self.save_dir / job_name / "act.txt"
-            load_path_previous = self.data_dir / job_name / "act.txt"
             if load_path.exists():
                 with open(load_path, "r") as file:
-                    act = float(file.read().strip())
-                    op_data.autocorr_time = act
-                    print(f"{job_name}: Loaded ACT from {load_path}")
-            # TODO: Delete below after transfer all ACT
-            elif load_path_previous.exists():
-                with open(load_path_previous, "r") as file:
                     act = float(file.read().strip())
                     op_data.autocorr_time = act
                     print(f"{job_name}: Loaded ACT from {load_path}")

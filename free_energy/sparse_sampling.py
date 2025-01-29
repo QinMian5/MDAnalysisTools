@@ -17,6 +17,7 @@ from op_dataset import OPDataset
 
 
 class SparseSampling:
+    data_to_save = ["x_u", "F_nu_u"]
     def __init__(self, dataset: None | OPDataset, op: str):
         self.dataset = dataset
         self.op = op
@@ -26,10 +27,10 @@ class SparseSampling:
         self.F_lambda_u: np.ndarray | None = None  # x_star
         self.F_nu_lambda_u: np.ndarray | None = None  # x
         self.U_lambda_u: np.ndarray | None = None  # x
-        self.F_nu_u: np.ndarray | None = None  # x
+        self.F_nu_u: np.ndarray | None = None  # x, free energy
         self._dF_nu_dx: np.ndarray | None = None
         self._sigma_dF_nu_dx: np.ndarray | None = None
-        self.energy: np.ndarray | None = None  # x
+        self.save_dir = self.dataset.save_dir / "sparse_sampling"
 
     @property
     def dF_nu_dx(self):
@@ -109,7 +110,7 @@ class SparseSampling:
         F_nu_u -= F_nu_u[0]
         self.F_nu_u = F_nu_u
 
-    def _calculate_dF_nu_dx(self) -> None:
+    def __calculate_dF_nu_dx(self) -> None:
         column_name = self.op
         dF_nu_lambda_dx_list = []
         dU_lambda_dx_list = []
@@ -174,7 +175,7 @@ class SparseSampling:
 
         title = fr"Free Energy Profile at Different $\Delta T$"
         x_label = fr"$\lambda$"
-        y_label = fr"$G(\lambda;\Delta T)$"
+        y_label = fr"$G(\lambda;\Delta T) (kT)$"
         fig, ax = create_fig_ax(title, x_label, y_label)
         # ax.tick_params(axis='y')
         self.plot_free_energy_plot_line(ax, label=r"Raw data (at $300\ \mathrm{K}$)")
@@ -192,7 +193,7 @@ class SparseSampling:
 
         title = fr"Free Energy Profile at Different $\Delta T$ (Zoomed In)"
         x_label = fr"$\lambda$"
-        y_label = fr"$G(\lambda;\Delta T)$"
+        y_label = fr"$G(\lambda;\Delta T)$ (kT)"
         fig, ax = create_fig_ax(title, x_label, y_label)
         # ax.tick_params(axis='y')
         for Delta_T in range(0, 105, 5):
@@ -237,6 +238,22 @@ class SparseSampling:
         save_path = save_dir / f"sparse_sampling_detail.png"
         save_figure(fig, save_path)
         plt.close(fig)
+
+    def save_result(self):
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+        for name in self.data_to_save:
+            array = getattr(self, name)
+            save_path = self.save_dir / f"{name}.npy"
+            np.save(save_path, array)
+            print(f"Saved self.{name} to {save_path}.")
+
+    def load_result(self):
+        for name in self.data_to_save:
+            save_path = self.save_dir / f"{name}.npy"
+            array = np.load(save_path, allow_pickle=True)
+            setattr(self, name, array)
+            print(f"Loaded self.{name} from {save_path}.")
+
 
 
 def main():

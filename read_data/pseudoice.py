@@ -5,20 +5,14 @@ import json
 import os
 
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import pandas as pd
 from scipy.optimize import curve_fit
-from scipy.stats import pearsonr
-from scipy.ndimage import gaussian_filter1d
 import uncertainties.unumpy as unp
 
-from utils import convert_unit, read_solid_like_atoms
-from utils_plot import create_fig_ax, save_figure, plot_with_error_bar, plot_with_error_band
+from utils_plot import create_fig_ax, save_figure, plot_with_error_band
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
-from sparse_sampling import SparseSampling
-from wham import BinlessWHAM
+from free_energy import SparseSampling, BinlessWHAM
 
 run_env = os.environ.get("RUN_ENVIRONMENT")
 if run_env == "wsl":

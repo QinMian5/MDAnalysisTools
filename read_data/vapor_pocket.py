@@ -6,9 +6,9 @@ import json
 from utils import convert_unit
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
-from stitch import Stitch
-from wham import BinlessWHAM
-from sparse_sampling import SparseSampling
+from free_energy.stitch import Stitch
+from free_energy.wham import BinlessWHAM
+from free_energy.sparse_sampling import SparseSampling
 
 
 def read_data() -> OPDataset:

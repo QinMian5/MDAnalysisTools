@@ -66,7 +66,7 @@ class Stitch:
         self.stitched_data[column_name] = stitched_data
 
     def plot(self, column_name: str, save_fig=True, save_dir=Path("./figure")):
-        plt.style.use("presentation.mplstyle")
+        plt.style.use("../presentation.mplstyle")
         plt.figure()
         for job_name, params, bin_midpoints_valid, unbiased_free_energy in self.stitched_data[column_name]:
             plt.plot(bin_midpoints_valid, convert_unit(unbiased_free_energy), label=params)

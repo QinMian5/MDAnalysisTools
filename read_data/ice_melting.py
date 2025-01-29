@@ -10,8 +10,8 @@ from scipy.interpolate import CubicSpline
 from utils import convert_unit
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
-from wham import BinlessWHAM
-from sparse_sampling import SparseSampling
+from free_energy.wham import BinlessWHAM
+from free_energy.sparse_sampling import SparseSampling
 
 DATA_DIR = Path("/home/qinmian/data/gromacs/ice_melting/prd/melting/result")
 FIGURE_SAVE_DIR = DATA_DIR / "figure"
