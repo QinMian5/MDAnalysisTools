@@ -7,14 +7,16 @@ import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy import optimize, stats
+from uncertainties import ufloat
 import uncertainties.unumpy as unp
 
 from utils import calculate_triangle_area
-from utils_plot import create_fig_ax, save_figure, plot_with_error_bar
+from utils_plot import create_fig_ax, save_figure, plot_with_error_bar, plot_with_error_band
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
-from free_energy import SparseSampling
-from free_energy_reweighting import reweight_free_energy
+from free_energy import SparseSampling, BinlessWHAM
+from free_energy_reweighting import reweight_free_energy, get_delta_T_star
 
 run_env = os.environ.get("RUN_ENVIRONMENT")
 if run_env == "wsl":
@@ -73,41 +75,209 @@ def post_processing_ss(rho, process):
     ss = SparseSampling(dataset, op)
     ss.calculate()
     ss.plot_free_energy(save_dir=figure_save_dir)
-    ss.plot_different_DeltaT(save_dir=figure_save_dir)
+    # ss.plot_different_DeltaT(save_dir=figure_save_dir)
     ss.plot_detail(save_dir=figure_save_dir)
     ss.save_result()
 
 
-def calc_plot_lambda_q(rho, process):
+def post_processing_wham(rho, process):
     figure_save_dir = home_path / f"data/gromacs/het_nucleation/data/{rho}/prd/{process}/figure"
     dataset = read_data(rho, process)
-    intermediate_result_save_dir = dataset.save_dir / "lambda_qbar"
 
-    qbar_list = []
-    lambda_chillplus_list = []
-    # lambda_with_PI_list = []
-    for job_name, op_data in dataset.items():
-        df = op_data.df_prd
-        qbar = df["QBAR"].values
-        # lambda_with_PI = df["lambda_with_PI"].values
-        lambda_chillplus = df["lambda_chillplus"].values
-        qbar_list.append(qbar)
-        lambda_chillplus_list.append(lambda_chillplus)
-        # lambda_with_PI_list.append(lambda_with_PI)
+    op_in = ["QBAR", "lambda_with_PI"]
+    op_out = "lambda_with_PI"
+    wham = BinlessWHAM(dataset, op_in, op_out, bin_range=(10, 390))
+    # wham.load_result()
+    wham.calculate(with_uncertainties=1, n_iter=1000)
+    wham.save_result()
+    wham.plot_free_energy(save_dir=figure_save_dir)
+    # wham.plot_different_DeltaT(save_dir=figure_save_dir)
 
-    qbar_array = np.concatenate(qbar_list)
-    lambda_chillplus_array = np.concatenate(lambda_chillplus_list)
-    # lambda_with_PI_array = np.concatenate(lambda_with_PI_list)
 
-    title = rf"Number of Ice-like Water, $\rho = {rho}$, {process}"
-    x_label = "qbar"
-    y_label = r"$\lambda$"
+def geometric_sphere_fit(points):
+    """Analytic sphere fitting using 4 points"""
+    A = np.zeros((4, 4))
+    A[:, 0] = points[:, 0]
+    A[:, 1] = points[:, 1]
+    A[:, 2] = points[:, 2]
+    A[:, 3] = 1
+    f = np.sum(points ** 2, axis=1)
+    c = np.linalg.solve(A, f)
+    center = c[:3] / 2
+    radius = np.sqrt(c[3] + np.sum(center ** 2))
+    return center, radius
+
+
+def fit_spherical_cap(nodes: np.ndarray, n_ransac=1000, eps=1.0, delta_z=0.5):
+    if len(nodes) == 0:
+        return {"plane_z": 0,
+                "plane_z_std": 0,
+                "sphere_center": 0,
+                "sphere_center_std": 0,
+                "sphere_radius": 0,
+                "sphere_radius_std": 0,
+                "contact_angle": 0,
+                "contact_angle_std": 0}
+    z = nodes[:, 2]
+    hist, bin_edges = np.histogram(z, bins="auto")
+    max_bin = np.argmax(hist)
+    z_low, z_high = bin_edges[max_bin], bin_edges[max_bin + 1]
+
+    plane_mask = (z >= z_low - delta_z * (z_high - z_low)) & \
+                 (z <= z_high + delta_z * (z_high - z_low))
+    plane_nodes = nodes[plane_mask]
+
+    z0 = np.mean(plane_nodes[:, 2])
+    z0_std = np.std(plane_nodes[:, 2]) / np.sqrt(len(plane_nodes))
+
+    # ================== Sphere Fitting ================== #
+    # Exclude plane region nodes
+    sphere_nodes = nodes[~plane_mask]
+    if len(sphere_nodes) < 4:
+        raise ValueError("Insufficient non-planar nodes for sphere fitting")
+
+    # RANSAC phase
+    best_params, max_inliers = None, 0
+    for _ in range(n_ransac):
+        sample = sphere_nodes[np.random.choice(len(sphere_nodes), 4, replace=False)]
+
+        # Fit sphere through samples
+        try:
+            center, radius = geometric_sphere_fit(sample)
+        except np.linalg.LinAlgError:
+            continue
+
+        # Find inliers
+        distances = np.linalg.norm(sphere_nodes - center, axis=1)
+        inliers = np.abs(distances - radius) < eps
+        n_inliers = np.sum(inliers)
+        if n_inliers > max_inliers:
+            max_inliers = n_inliers
+            best_params = (center, radius, inliers)
+
+    # Refine with the Least Squares Method
+    def residual(params):
+        center, radius = params[:3], params[3]
+        return np.linalg.norm(sphere_nodes - center, axis=1) - radius
+
+    center_init, radius_init, inlier_mask = best_params
+    inlier_nodes = sphere_nodes[inlier_mask]
+    opt_result = optimize.least_squares(
+        residual,
+        x0=np.append(center_init, radius_init),
+        loss="soft_l1"
+    )
+    center_opt = opt_result.x[:3]
+    radius_opt = opt_result.x[3]
+
+    # Uncertainty estimation
+    residuals = residual(opt_result.x)
+    radius_std = np.std(residuals)
+    jac = opt_result.jac
+    cov_matrix = np.linalg.inv(jac.T @ jac) * (radius_std ** 2)
+    center_std = np.sqrt(np.diag(cov_matrix))[:3]
+
+    # =============== Contact Angle Calculation =============== #
+    dz = center_opt[2] - z0
+    if abs(dz) > radius_opt:
+        raise ValueError("Invalid spherical cap configuration")
+
+    theta = np.arccos(dz / radius_opt)
+
+    # Error propagation
+    var_zc = center_std[2] ** 2
+    var_z0 = z0_std ** 2
+    var_r = radius_std ** 2
+
+    dtheta_dzc = -1 / (radius_opt * np.sin(theta))
+    dtheta_dz0 = 1 / (radius_opt * np.sin(theta))
+    dtheta_dr = -dz / (radius_opt ** 2 * np.sin(theta))
+
+    theta_std = np.sqrt(
+        (dtheta_dzc ** 2 * var_zc) +
+        (dtheta_dz0 ** 2 * var_z0) +
+        (dtheta_dr ** 2 * var_r)
+    )
+    print(f"{np.degrees(theta):.2f} +- {np.degrees(theta_std):.2f}")
+
+    results = {
+        "plane_z": z0,
+        "plane_z_std": z0_std,
+        "sphere_center": center_opt,
+        "sphere_center_std": center_std,
+        "sphere_radius": radius_opt,
+        "sphere_radius_std": radius_std,
+        "contact_angle": theta,
+        "contact_angle_std": theta_std,
+    }
+    return results
+
+
+def post_processing_fit_spherical_cap(rho, process):
+    job_params = _load_params(rho, process)
+    dataset = read_data(rho, process)
+    for job_name, params in job_params.items():
+        data_dir = dataset.data_dir / job_name
+        save_dir = dataset.data_dir.parent / "intermediate_result" / job_name
+        with open(data_dir / "interface.pickle", "rb") as file:
+            nodes, faces, interface_type = pickle.load(file)
+        results = fit_spherical_cap(nodes)
+        with open(save_dir / "spherical_cap_fitting.pickle", "wb") as file:
+            pickle.dump(results, file)
+
+
+def compare_with_theory():
+    rho = 0.75
+    process = "melting_300K"
+    op = "QBAR"
+    figure_save_dir = home_path / f"data/gromacs/het_nucleation/data/{rho}/prd/{process}/figure"
+
+    job_params = _load_params(rho, process)
+    dataset = read_data(rho, process)
+    interface_type_dict = {0: "IW", 1: "IS"}
+    info = {f"A_{v}": [] for v in interface_type_dict.values()}
+    x_star_list = []
+    sphere_radius_list = []
+    contact_angle_list = []
+    for job_name, params in job_params.items():
+        x_star_list.append(params[op]["X_STAR"])
+        data_dir = dataset.data_dir / job_name
+        intermediate_data_dir = dataset.data_dir.parent / "intermediate_result" / job_name
+        with open(data_dir / "interface.pickle", "rb") as file:
+            nodes, faces, interface_type = pickle.load(file)
+        for k, v in interface_type_dict.items():
+            index = np.where(interface_type == k)
+            faces_v = faces[index]
+            _, A_v = calculate_triangle_area(nodes, faces_v)  # Unit: Angstrom^2
+            # A_v = A_v * 1e-20  # to unit m^2
+            info[f"A_{v}"].append(A_v)
+        with open(intermediate_data_dir / "spherical_cap_fitting.pickle", "rb") as file:
+            fitting_results = pickle.load(file)
+            sphere_radius = fitting_results["sphere_radius"]
+            contact_angle = fitting_results["contact_angle"]
+            sphere_radius_list.append(sphere_radius)
+            contact_angle_list.append(contact_angle)
+    x_star_array = np.array(x_star_list)
+    for k, v in info.items():
+        info[k] = np.array(v)
+    sphere_radius_array = np.array(sphere_radius_list)
+    contact_angle_array = np.array(contact_angle_list)
+    A_IW = info["A_IW"]
+    A_IS = info["A_IS"]
+    A_IW_theory = 2 * np.pi * sphere_radius_array ** 2 * (1 - np.cos(contact_angle_array))
+    A_IS_theory = np.pi * sphere_radius_array ** 2 * np.sin(contact_angle_array) ** 2
+
+    title = "Surface Area Comparison"
+    x_label = r"$x^*$"
+    y_label = r"$\mathrm{Surface Area}\ (Å^2)$"
     fig, ax = create_fig_ax(title, x_label, y_label)
-    ax.plot(qbar_array, lambda_chillplus_array, "b+", label="lambda_chillplus")
-    # ax.plot(qbar_array, lambda_with_PI_array, 'g+', label="lambda_with_PI")
-
+    color_IW = ax.plot(x_star_array, A_IW, "o-", label=r"$A_{IW}$")[0].get_color()
+    color_IS = ax.plot(x_star_array, A_IS, "o-", label=r"$A_{IS}$")[0].get_color()
+    ax.plot(x_star_array, A_IW_theory, label=r"$A_{IW, \mathrm{theory}}$", color=color_IW, linestyle="--")
+    ax.plot(x_star_array, A_IS_theory, label=r"$A_{IS, \mathrm{theory}}$", color=color_IS, linestyle="--")
     ax.legend()
-    save_path = figure_save_dir / "lambda_qbar.png"
+
+    save_path = figure_save_dir / "surface_area_comparison.png"
     save_figure(fig, save_path)
     plt.close(fig)
 
@@ -163,14 +333,68 @@ def compare_reweighting_method():
     plt.close(fig)
 
 
+def main_Delta_T_star(rho, process):
+    figure_save_dir = home_path / f"data/gromacs/het_nucleation/data/{rho}/prd/{process}/figure"
+    job_params = _load_params(rho, process)
+    dataset = read_data(rho, process)
+    interface_type_dict = {0: "IW", 1: "IS"}
+    info = {f"A_{v}": [] for v in interface_type_dict.values()}
+    info["x_A"] = []
+
+    op_in = ["QBAR", "lambda_with_PI"]
+    op_out = "lambda_with_PI"
+
+    for job_name, params in job_params.items():
+        data_dir = dataset.data_dir / job_name
+        op_data = dataset[job_name]
+        x_A = op_data.df_prd[op_out].mean()
+        info["x_A"].append(x_A)
+        with open(data_dir / "interface.pickle", "rb") as file:
+            nodes, faces, interface_type = pickle.load(file)
+        for k, v in interface_type_dict.items():
+            index = np.where(interface_type == k)
+            faces_v = faces[index]
+            _, A_v = calculate_triangle_area(nodes, faces_v)  # Unit: Angstrom^2
+            A_v = A_v * 1e-20  # to unit m^2
+            info[f"A_{v}"].append(A_v)
+    for k, v in info.items():
+        info[k] = np.array(v)
+
+    wham = BinlessWHAM(dataset, op_in, op_out, bin_range=(10, 550))
+    wham.load_result()
+    x, F = wham.bin_midpoint, wham.energy
+    Delta_T_star = get_delta_T_star(x, F, 300, **info)
+
+    title = fr"Free Energy at Different $\Delta T$, $\Delta T^* = {Delta_T_star:.0f}$ K"
+    x_label = fr"$x$"
+    y_label = fr"$G(x;\Delta T)$ (kJ/mol)"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+
+    T_m = 272
+    for Delta_T in range(int(Delta_T_star) - 15, int(Delta_T_star) + 16, 5):
+        T = T_m - Delta_T
+        label = fr"$\Delta T^* = {Delta_T}\ \mathrm{{K}}$"
+        reweighted_F = reweight_free_energy(x, F, 300, T, **info)
+        plot_with_error_band(ax, x, reweighted_F, label=label)
+
+    ax.legend()
+    save_path = figure_save_dir / f"free_energy_reweighting.png"
+    save_figure(fig, save_path)
+    plt.close(fig)
+
+
 def main():
     rho = 0.75
-    process = "melting_270K"
+    process = "melting_300K"
 
     # post_processing_eda(rho, process)
     # post_processing_ss(rho, process)
+    # post_processing_wham(rho, process)
+    post_processing_fit_spherical_cap(rho, process)
     # calc_plot_lambda_q(rho, process)
-    compare_reweighting_method()
+    # compare_reweighting_method()
+    compare_with_theory()
+    # main_Delta_T_star(rho, process)
 
 
 if __name__ == "__main__":

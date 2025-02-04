@@ -3,16 +3,19 @@
 from pathlib import Path
 import json
 import os
+import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import uncertainties.unumpy as unp
 
+from utils import calculate_triangle_area
 from utils_plot import create_fig_ax, save_figure, plot_with_error_band
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
 from free_energy import SparseSampling, BinlessWHAM
+from free_energy_reweighting import reweight_free_energy, get_delta_T_star
 
 run_env = os.environ.get("RUN_ENVIRONMENT")
 if run_env == "wsl":
@@ -93,7 +96,6 @@ def post_processing_wham(rho, process):
     # wham.calculate(with_uncertainties=1, n_iter=1000)
     # wham.save_result()
     wham.plot_free_energy(save_dir=figure_save_dir)
-    wham.plot_different_DeltaT(save_dir=figure_save_dir)
 
     # Find the location of the maximum slope
     # x = wham.bin_midpoint
@@ -279,17 +281,64 @@ def compare_free_energy(rho):
     save_figure(fig, save_path)
 
 
+def main_Delta_T_star(rho, process):
+    figure_save_dir = home_path / f"data/gromacs/pseudoice/data/{rho}/prd/{process}/figure"
+    job_params = _load_params(rho, process)
+    dataset = read_data(rho, process)
+    interface_type_dict = {0: "IW", 1: "IS"}
+    info = {f"A_{v}": [] for v in interface_type_dict.values()}
+    info["x_A"] = []
+
+    op_in = ["QBAR", "lambda_with_PI"]
+    op_out = "lambda_with_PI"
+
+    for job_name, params in job_params.items():
+        data_dir = dataset.data_dir / job_name
+        op_data = dataset[job_name]
+        x_A = op_data.df_prd[op_out].mean()
+        info["x_A"].append(x_A)
+        with open(data_dir / "interface.pickle", "rb") as file:
+            nodes, faces, interface_type = pickle.load(file)
+        for k, v in interface_type_dict.items():
+            index = np.where(interface_type == k)
+            faces_v = faces[index]
+            _, A_v = calculate_triangle_area(nodes, faces_v)  # Unit: Angstrom^2
+            A_v = A_v * 1e-20  # to unit m^2
+            info[f"A_{v}"].append(A_v)
+    for k, v in info.items():
+        info[k] = np.array(v)
+
+    wham = BinlessWHAM(dataset, op_in, op_out, bin_range=(10, 550))
+    wham.load_result()
+    x, F = wham.bin_midpoint, wham.energy
+    Delta_T_star = get_delta_T_star(x, F, 300, **info)
+
+    title = fr"Free Energy at Different $\Delta T$, $\Delta T^* = {Delta_T_star:.0f}$ K"
+    x_label = fr"$x$"
+    y_label = fr"$G(x;\Delta T)$ (kJ/mol)"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+
+    T_m = 272
+    for Delta_T in range(int(Delta_T_star) - 15, int(Delta_T_star) + 16, 5):
+        T = T_m - Delta_T
+        label = fr"$\Delta T^* = {Delta_T}\ \mathrm{{K}}$"
+        reweighted_F = reweight_free_energy(x, F, 300, T, **info)
+        plot_with_error_band(ax, x, reweighted_F, label=label)
+
+    ax.legend()
+    save_path = figure_save_dir / f"free_energy_reweighting.png"
+    save_figure(fig, save_path)
+    plt.close(fig)
+
+
 def main():
     process = "melting_300K"
     rho = 0.75
     # post_processing_eda(rho, process)
     # post_processing_ss(rho, process)
-    post_processing_wham(rho, process)
-    # calc_plot_lambda_q(rho, process)
+    # post_processing_wham(rho, process)
+    main_Delta_T_star(rho, process)
 
-    # for rho in [1.0]:
-    #     compare_free_energy(rho)
-        # plot_difference(rho)
 
 
 if __name__ == "__main__":

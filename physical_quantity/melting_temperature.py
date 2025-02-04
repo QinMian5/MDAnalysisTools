@@ -12,7 +12,7 @@ class MeltingTemperature(PhysicalQuantity):
 
 
 T_m_real_water = MeltingTemperature("RealWater", 273.15)
-T_m_tip4p_ice = MeltingTemperature("Tip4pIce", 272)  # @Espinosa_2014_HomogeneousIceNucleation
+T_m_tip4p_ice = MeltingTemperature("Tip4pIce", 272.2)
 
 
 def main():
