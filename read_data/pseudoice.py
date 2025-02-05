@@ -314,14 +314,14 @@ def main_Delta_T_star(rho, process):
     Delta_T_star = get_delta_T_star(x, F, 300, **info)
 
     title = fr"Free Energy at Different $\Delta T$, $\Delta T^* = {Delta_T_star:.0f}$ K"
-    x_label = fr"$x$"
+    x_label = fr"$\lambda$"
     y_label = fr"$G(x;\Delta T)$ (kJ/mol)"
     fig, ax = create_fig_ax(title, x_label, y_label)
 
     T_m = 272
     for Delta_T in range(int(Delta_T_star) - 15, int(Delta_T_star) + 16, 5):
         T = T_m - Delta_T
-        label = fr"$\Delta T^* = {Delta_T}\ \mathrm{{K}}$"
+        label = fr"$\Delta T = {Delta_T}\ \mathrm{{K}}$"
         reweighted_F = reweight_free_energy(x, F, 300, T, **info)
         plot_with_error_band(ax, x, reweighted_F, label=label)
 

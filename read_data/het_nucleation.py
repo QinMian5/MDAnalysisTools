@@ -193,6 +193,13 @@ def fit_spherical_cap(nodes: np.ndarray, n_ransac=1000, eps=1.0, delta_z=0.5):
     dtheta_dz0 = 1 / (radius_opt * np.sin(theta))
     dtheta_dr = -dz / (radius_opt ** 2 * np.sin(theta))
 
+    # Check uncertainty calculation
+    # z0_u = ufloat(z0, z0_std)
+    # z_u = ufloat(center_opt[2], center_std[2])
+    # dz = z_u - z0_u
+    # radius_u = ufloat(radius_opt, radius_std)
+    # theta_u = unp.arccos(dz / radius_u)
+
     theta_std = np.sqrt(
         (dtheta_dzc ** 2 * var_zc) +
         (dtheta_dz0 ** 2 * var_z0) +
@@ -226,6 +233,52 @@ def post_processing_fit_spherical_cap(rho, process):
             pickle.dump(results, file)
 
 
+def main_plot_R_theta(rho, process):
+    figure_save_dir = home_path / f"data/gromacs/het_nucleation/data/{rho}/prd/{process}/figure"
+    job_params = _load_params(rho, process)
+    dataset = read_data(rho, process)
+    op = "QBAR"
+    x_star_list = []
+    sphere_radius_list = []
+    sphere_radius_std_list = []
+    contact_angle_list = []
+    contact_angle_std_list = []
+    for job_name, params in job_params.items():
+        x_star_list.append(params[op]["X_STAR"])
+        intermediate_data_dir = dataset.data_dir.parent / "intermediate_result" / job_name
+        with open(intermediate_data_dir / "spherical_cap_fitting.pickle", "rb") as file:
+            fitting_results = pickle.load(file)
+        sphere_radius = fitting_results["sphere_radius"]
+        sphere_radius_std = fitting_results["sphere_radius_std"]
+        contact_angle = fitting_results["contact_angle"]
+        contact_angle_std = fitting_results["contact_angle_std"]
+        sphere_radius_list.append(sphere_radius)
+        sphere_radius_std_list.append(sphere_radius_std)
+        contact_angle_list.append(contact_angle)
+        contact_angle_std_list.append(contact_angle_std)
+    x_star_array = np.array(x_star_list)
+    sphere_radius_u = unp.uarray(sphere_radius_list, sphere_radius_std_list)
+    contact_angle_u = unp.uarray(contact_angle_list, contact_angle_std_list)
+
+    title = "Fitting Sphere Radius"
+    x_label = r"$x^*$"
+    y_label = r"$r$ (Å)"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+    plot_with_error_band(ax, x_star_array, sphere_radius_u, "go-")
+    save_path = figure_save_dir / f"fitting_sphere_radius.png"
+    save_figure(fig, save_path)
+    plt.close(fig)
+
+    title = "Fitting Contact Angle"
+    x_label = r"$x^*$"
+    y_label = r"$\theta$ (degree)"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+    plot_with_error_band(ax, x_star_array, contact_angle_u * 180 / np.pi, "bo-")
+    save_path = figure_save_dir / f"fitting_contact_angle.png"
+    save_figure(fig, save_path)
+    plt.close(fig)
+
+
 def compare_with_theory():
     rho = 0.75
     process = "melting_300K"
@@ -238,7 +291,9 @@ def compare_with_theory():
     info = {f"A_{v}": [] for v in interface_type_dict.values()}
     x_star_list = []
     sphere_radius_list = []
+    sphere_radius_std_list = []
     contact_angle_list = []
+    contact_angle_std_list = []
     for job_name, params in job_params.items():
         x_star_list.append(params[op]["X_STAR"])
         data_dir = dataset.data_dir / job_name
@@ -253,28 +308,32 @@ def compare_with_theory():
             info[f"A_{v}"].append(A_v)
         with open(intermediate_data_dir / "spherical_cap_fitting.pickle", "rb") as file:
             fitting_results = pickle.load(file)
-            sphere_radius = fitting_results["sphere_radius"]
-            contact_angle = fitting_results["contact_angle"]
-            sphere_radius_list.append(sphere_radius)
-            contact_angle_list.append(contact_angle)
+        sphere_radius = fitting_results["sphere_radius"]
+        sphere_radius_std = fitting_results["sphere_radius_std"]
+        contact_angle = fitting_results["contact_angle"]
+        contact_angle_std = fitting_results["contact_angle_std"]
+        sphere_radius_list.append(sphere_radius)
+        sphere_radius_std_list.append(sphere_radius_std)
+        contact_angle_list.append(contact_angle)
+        contact_angle_std_list.append(contact_angle_std)
     x_star_array = np.array(x_star_list)
     for k, v in info.items():
         info[k] = np.array(v)
-    sphere_radius_array = np.array(sphere_radius_list)
-    contact_angle_array = np.array(contact_angle_list)
+    sphere_radius_u = unp.uarray(sphere_radius_list, sphere_radius_std_list)
+    contact_angle_u = unp.uarray(contact_angle_list, contact_angle_std_list)
     A_IW = info["A_IW"]
     A_IS = info["A_IS"]
-    A_IW_theory = 2 * np.pi * sphere_radius_array ** 2 * (1 - np.cos(contact_angle_array))
-    A_IS_theory = np.pi * sphere_radius_array ** 2 * np.sin(contact_angle_array) ** 2
+    A_IW_theory = 2 * np.pi * sphere_radius_u ** 2 * (1 - unp.cos(contact_angle_u))
+    A_IS_theory = np.pi * sphere_radius_u ** 2 * unp.sin(contact_angle_u) ** 2
 
     title = "Surface Area Comparison"
     x_label = r"$x^*$"
     y_label = r"$\mathrm{Surface Area}\ (Å^2)$"
     fig, ax = create_fig_ax(title, x_label, y_label)
-    color_IW = ax.plot(x_star_array, A_IW, "o-", label=r"$A_{IW}$")[0].get_color()
-    color_IS = ax.plot(x_star_array, A_IS, "o-", label=r"$A_{IS}$")[0].get_color()
-    ax.plot(x_star_array, A_IW_theory, label=r"$A_{IW, \mathrm{theory}}$", color=color_IW, linestyle="--")
-    ax.plot(x_star_array, A_IS_theory, label=r"$A_{IS, \mathrm{theory}}$", color=color_IS, linestyle="--")
+    color_IW = ax.plot(x_star_array, A_IW, "o-", label=r"$A_{iw}$")[0].get_color()
+    color_IS = ax.plot(x_star_array, A_IS, "o-", label=r"$A_{is}$")[0].get_color()
+    plot_with_error_band(ax, x_star_array, A_IW_theory, label=r"$A_{iw, \mathrm{theory}}$", color=color_IW, linestyle="--")
+    plot_with_error_band(ax, x_star_array, A_IS_theory, label=r"$A_{is, \mathrm{theory}}$", color=color_IS, linestyle="--")
     ax.legend()
 
     save_path = figure_save_dir / "surface_area_comparison.png"
@@ -366,14 +425,14 @@ def main_Delta_T_star(rho, process):
     Delta_T_star = get_delta_T_star(x, F, 300, **info)
 
     title = fr"Free Energy at Different $\Delta T$, $\Delta T^* = {Delta_T_star:.0f}$ K"
-    x_label = fr"$x$"
+    x_label = fr"$\lambda$"
     y_label = fr"$G(x;\Delta T)$ (kJ/mol)"
     fig, ax = create_fig_ax(title, x_label, y_label)
 
     T_m = 272
-    for Delta_T in range(int(Delta_T_star) - 15, int(Delta_T_star) + 16, 5):
+    for Delta_T in range(int(np.round(Delta_T_star)) - 15, int(np.round(Delta_T_star)) + 16, 5):
         T = T_m - Delta_T
-        label = fr"$\Delta T^* = {Delta_T}\ \mathrm{{K}}$"
+        label = fr"$\Delta T = {Delta_T}\ \mathrm{{K}}$"
         reweighted_F = reweight_free_energy(x, F, 300, T, **info)
         plot_with_error_band(ax, x, reweighted_F, label=label)
 
@@ -390,11 +449,12 @@ def main():
     # post_processing_eda(rho, process)
     # post_processing_ss(rho, process)
     # post_processing_wham(rho, process)
-    post_processing_fit_spherical_cap(rho, process)
+    # post_processing_fit_spherical_cap(rho, process)
     # calc_plot_lambda_q(rho, process)
     # compare_reweighting_method()
-    compare_with_theory()
-    # main_Delta_T_star(rho, process)
+    # compare_with_theory()
+    # main_plot_R_theta(rho, process)
+    main_Delta_T_star(rho, process)
 
 
 if __name__ == "__main__":

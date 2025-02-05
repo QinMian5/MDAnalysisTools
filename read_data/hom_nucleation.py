@@ -13,8 +13,8 @@ from op_dataset import OPDataset, load_dataset
 from eda import EDA
 from free_energy import SparseSampling
 from utils import calculate_triangle_area
-from utils_plot import create_fig_ax, plot_with_error_bar, save_figure
-from free_energy_reweighting import reweight_free_energy
+from utils_plot import create_fig_ax, plot_with_error_bar, save_figure, plot_with_error_band
+from free_energy_reweighting import reweight_free_energy, get_delta_T_star
 
 run_env = os.environ.get("RUN_ENVIRONMENT")
 if run_env == "wsl":
@@ -150,11 +150,57 @@ def compare_reweighting_method():
             plt.close(fig)
 
 
+def main_Delta_T_star(process):
+    figure_save_dir = home_path / f"data/gromacs/hom_nucleation/prd/{process}/figure"
+    job_params = _load_params(process)
+    dataset = read_data(process)
+    info = {f"A_IW": [], "x_A": []}
+
+    op_in = ["QBAR", "lambda_with_PI"]
+    op_out = "lambda_with_PI"
+
+    for job_name, params in job_params.items():
+        data_dir = dataset.data_dir / job_name
+        op_data = dataset[job_name]
+        x_A = op_data.df_prd["QBAR"].mean()
+        info["x_A"].append(x_A)
+        with open(data_dir / "interface.pickle", "rb") as file:
+            nodes, faces = pickle.load(file)
+        _, A_v = calculate_triangle_area(nodes, faces)  # Unit: Angstrom^2
+        A_v = A_v * 1e-20  # to unit m^2
+        info[f"A_IW"].append(A_v)
+    for k, v in info.items():
+        info[k] = np.array(v)
+
+    ss = SparseSampling(dataset, op_out)
+    ss.load_result()
+    x, F = unp.nominal_values(ss.x_u), ss.F_nu_u
+    Delta_T_star = get_delta_T_star(x, F, 300, **info)
+
+    title = fr"Free Energy at Different $\Delta T$, $\Delta T^* = {Delta_T_star:.0f}$ K"
+    x_label = fr"$x$"
+    y_label = fr"$G(x;\Delta T)$ (kJ/mol)"
+    fig, ax = create_fig_ax(title, x_label, y_label)
+
+    T_m = 272
+    for Delta_T in range(int(Delta_T_star) - 15, int(Delta_T_star) + 16, 5):
+        T = T_m - Delta_T
+        label = fr"$\Delta T^* = {Delta_T}\ \mathrm{{K}}$"
+        reweighted_F = reweight_free_energy(x, F, 300, T, **info)
+        plot_with_error_band(ax, x, reweighted_F, label=label)
+
+    ax.legend()
+    save_path = figure_save_dir / f"free_energy_reweighting.png"
+    save_figure(fig, save_path)
+    plt.close(fig)
+
+
 def main():
     process = "melting_300K"
     # post_processing_eda()
     # post_processing_ss(process)
-    compare_reweighting_method()
+    # compare_reweighting_method()
+    main_Delta_T_star(process)
 
 
 if __name__ == "__main__":
