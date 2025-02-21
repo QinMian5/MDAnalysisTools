@@ -2,7 +2,10 @@
 # Date Created: 2024/11/15
 import numpy as np
 
-from .prototype import PhysicalQuantity
+if __name__ == "__main__":
+    from prototype import PhysicalQuantity
+else:
+    from .prototype import PhysicalQuantity
 
 
 class MeltingTemperature(PhysicalQuantity):

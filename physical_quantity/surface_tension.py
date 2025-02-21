@@ -2,8 +2,12 @@
 # Date Created: 2024/11/14
 import numpy as np
 
-from .prototype import TDependentQuantity
-from .melting_temperature import T_m_real_water, T_m_tip4p_ice
+if __name__ == "__main__":
+    from prototype import TDependentQuantity
+    from physical_quantity import T_m_real_water, T_m_tip4p_ice
+else:
+    from .prototype import TDependentQuantity
+    from .melting_temperature import T_m_real_water, T_m_tip4p_ice
 
 
 class SurfaceTension(TDependentQuantity):
@@ -39,7 +43,7 @@ def gamma_IL_tip4p_ice_func(T):
     return gamma
 
 
-gamma_IL_tip4p_ice = SurfaceTension("Tip4pIce", (100, 300), gamma_IL_tip4p_ice_func)  # TODO: valid range is incorrect
+gamma_IL_tip4p_ice = SurfaceTension("Tip4pIce", (230, 300), gamma_IL_tip4p_ice_func)  # TODO: valid range is incorrect
 
 
 def main():

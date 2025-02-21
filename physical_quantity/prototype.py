@@ -1,10 +1,12 @@
 # Author: Mian Qin
 # Date Created: 2024/11/13
 from pathlib import Path
+import warnings
 
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from statsmodels.tools.sm_exceptions import ValueWarning
 
 from utils_plot import create_fig_ax, save_figure
 
@@ -86,7 +88,7 @@ class TDependentQuantity(metaclass=TrackSubclass):
     def check_T_range(self, T):
         T_min, T_max = self.valid_range
         if T < T_min or T > T_max:
-            raise ValueError(f"Temperature {T} is out of the valid range ({T_min}, {T_max})")
+            warnings.warn(f"{self.name} {self.model}: Temperature {T} is out of the valid range ({T_min}, {T_max})")
 
     def plot_T_dependent_on_ax(self, ax):
         T_min, T_max = self.valid_range

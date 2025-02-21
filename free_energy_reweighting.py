@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import scipy.constants as c
 from scipy.optimize import newton
 from scipy.interpolate import interp1d
+from scipy.misc import derivative
 import uncertainties.unumpy as unp
 
 from utils import calculate_triangle_area
@@ -43,27 +44,71 @@ def reweight_free_energy(x: np.ndarray, free_energy: np.ndarray, T_src: float, T
     return new_free_energy
 
 
-def get_delta_T_star(x: np.ndarray, free_energy: np.ndarray, T_sim: float, **kwargs):
+def find_energy_barrier(x, y):
+    n = len(x)
+    if n == 0:
+        raise ValueError
+
+    min_index = 0
+    max_barrier = 0
+
+    min_point = (x[0], y[0])
+    max_point = (x[0], y[0])
+
+    for i in range(1, n):
+        barrier = y[i] - y[min_index]
+        if barrier > max_barrier:
+            max_barrier = barrier
+            min_point = (x[min_index], y[min_index])
+            max_point = (x[i], y[i])
+
+        if y[i] < y[min_index]:
+            min_index = i
+
+    return max_barrier, min_point, max_point
+
+
+def get_delta_T_star(x: np.ndarray, free_energy: np.ndarray, T_sim: float, J_target=1e28, **kwargs):
     free_energy = unp.nominal_values(free_energy)
-    G_barr_threshold = 5  # kT
     T_m = T_m_tip4p_ice.value
-    G_barr_initial = convert_unit(free_energy.max(), T=T_sim)
-    if G_barr_initial < G_barr_threshold:
-        raise RuntimeError
-    def f(T):
+
+    def ln_D(T):
+        return np.log(D_real_water_PL(T))
+
+    def calc_G_crit(T):
         reweighted_F = reweight_free_energy(x, free_energy, T_sim, T, **kwargs)
         reweighted_F_in_kT = convert_unit(reweighted_F, T=T)
-        G_barr = np.max(reweighted_F_in_kT) - reweighted_F_in_kT[np.argmin(x)]
-        return G_barr - G_barr_threshold
+        result = find_energy_barrier(x, reweighted_F_in_kT)
+        G_crit = result[0]
+        return G_crit
 
-    for Delta_T in range(0, 50, 10):
-        x0 = T_m - Delta_T
-        T = newton(f, x0)
-        Delta_T_star = T_m - T
-        if Delta_T_star > 0:
-            break
-    else:
-        raise RuntimeError(f"Fail to find deltaT")
+    def calc_G_diff(T):
+        G_diff = derivative(ln_D, T, dx=1e-5) * T
+        return G_diff
+
+    def f(T):
+        n_l = rho_I_tip4p_ice(T) * c.N_A
+        G_diff = calc_G_diff(T)
+        G_crit = calc_G_crit(T)
+        J = c.k * T / c.h * n_l * np.exp(-(G_diff + G_crit))
+        log_diff = np.log(J) - np.log(J_target)
+        return log_diff
+
+    # Get an initial guess
+    DeltaT_trial = np.linspace(0, 50, 50)
+    T_trial = T_m - DeltaT_trial
+    f_value = np.array([f(T) for T in T_trial])
+    f_value_abs = np.abs(f_value)
+    index = np.argmin(f_value_abs)
+    x0 = T_trial[index]
+    T = newton(f, x0)
+    Delta_T_star = T_m - T
+
+    G_diff = calc_G_diff(T)
+    G_crit = calc_G_crit(T)
+    print(f"G_diff = {G_diff}")
+    print(f"G_crit = {G_crit}")
+    print(f"Delta_T_star = {Delta_T_star}")
     return Delta_T_star
 
 

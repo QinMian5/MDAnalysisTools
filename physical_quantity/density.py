@@ -2,7 +2,10 @@
 # Date Created: 2024/11/14
 import numpy as np
 
-from .prototype import TDependentQuantity
+if __name__ == "__main__":
+    from prototype import TDependentQuantity
+else:
+    from .prototype import TDependentQuantity
 
 
 class IceDensity(TDependentQuantity):
@@ -27,7 +30,7 @@ def rho_I_tip4p_ice_func(T):
     """
     @Thosar_2024_EngulfmentAntifreezeProteins
     """
-    rho_I = 5e4
+    rho_I = 5e4  # mol/m^3
     return rho_I
 
 

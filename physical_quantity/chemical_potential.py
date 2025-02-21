@@ -2,8 +2,12 @@
 # Date Created: 2024/11/14
 import numpy as np
 
-from .prototype import TDependentQuantity
-from .melting_temperature import T_m_real_water, T_m_tip4p_ice
+if __name__ == "__main__":
+    from prototype import TDependentQuantity
+    from physical_quantity import T_m_real_water, T_m_tip4p_ice
+else:
+    from .prototype import TDependentQuantity
+    from .melting_temperature import T_m_real_water, T_m_tip4p_ice
 
 
 class ChemicalPotential(TDependentQuantity):
@@ -32,7 +36,7 @@ def delta_mu_tip4p_ice_func(T):
     return Delta_mu
 
 
-delta_mu_tip4p_ice = ChemicalPotential("Tip4pIce", (100, 300), delta_mu_tip4p_ice_func)  # TODO: valid range is incorrect
+delta_mu_tip4p_ice = ChemicalPotential("Tip4pIce", (250, 300), delta_mu_tip4p_ice_func)  # TODO: valid range is incorrect
 
 
 def main():
