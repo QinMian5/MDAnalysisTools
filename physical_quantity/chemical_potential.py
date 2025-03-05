@@ -33,6 +33,7 @@ def delta_mu_tip4p_ice_func(T):
     Delta_h = 5.6e3  # J/mol
     T_m = T_m_tip4p_ice.value  # K
     Delta_mu = Delta_h / T_m * (T - T_m)
+    # Delta_mu = (Delta_h / T_m + 4.50) * T - Delta_h
     return Delta_mu
 
 

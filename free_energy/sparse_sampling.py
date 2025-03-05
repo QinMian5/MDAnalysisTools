@@ -110,35 +110,7 @@ class SparseSampling:
         F_nu_u -= F_nu_u[0]
         self.F_nu_u = F_nu_u
 
-    def __calculate_dF_nu_dx(self) -> None:
-        column_name = self.op
-        dF_nu_lambda_dx_list = []
-        dU_lambda_dx_list = []
-        sigma_dU_lambda_dx_list = []
-        for job_name, data in self.dataset.items():
-            params = data.params[column_name]
-            op_values = data.df_prd[column_name].values
-            assert params["TYPE"] in ["parabola"], f"Unknown bias potential type: {params['type']}"
-            if params["TYPE"] == "parabola":
-                op_star = params["STAR"]
-                kappa = params["KAPPA"]
-                dF_nu_lambda_dx = 0  # Assume x_mean is the equilibrium position
-                dF_nu_lambda_dx_list.append(dF_nu_lambda_dx)
-                dU_lambda_dx = kappa * (op_values.mean() - op_star)
-                dU_lambda_dx_list.append(dU_lambda_dx)
-
-                N_independent_samples = data.independent_samples
-                sigma_dU_lambda_dx = kappa * op_values.std() / np.sqrt(N_independent_samples)
-                sigma_dU_lambda_dx_list.append(sigma_dU_lambda_dx)
-        dF_nu_lambda_dx = np.array(dF_nu_lambda_dx_list)
-        dU_lambda_dx = np.array(dU_lambda_dx_list)
-        dF_nu_dx = dF_nu_lambda_dx - dU_lambda_dx
-        sigma_dU_lambda_dx = np.array(sigma_dU_lambda_dx_list)
-        sigma_dF_nu_dx = sigma_dU_lambda_dx
-        self._dF_nu_dx = dF_nu_dx
-        self._sigma_dF_nu_dx = sigma_dF_nu_dx
-
-    def plot_free_energy_plot_line(self, ax, delta_mu=None, T=None, label=None, x_range=None):
+    def plot_free_energy_plot_line(self, ax, unit="kJ/mol", delta_mu=None, T=None, label=None, x_range=None):
         if T is None:
             T = self.dataset.T.mean()
         if delta_mu is None:
@@ -151,89 +123,50 @@ class SparseSampling:
             x = x[index]
             x_u = x_u[index]
             F_nu_u = F_nu_u[index]
-
-        line = plot_with_error_bar(ax, x, convert_unit(F_nu_u + delta_mu * x_u, T=T), "o-", label=label)
+        assert unit in ["kJ/mol", "kT"]
+        if unit == "kJ/mol":
+            line = plot_with_error_bar(ax, x, F_nu_u, "o-", label=label)
+        else:
+            line = plot_with_error_bar(ax, x, convert_unit(F_nu_u + delta_mu * x_u, T=T), "o-", label=label)
         return line
 
-    def plot_free_energy(self, save_dir=Path("./figure")):
+    def plot_free_energy(self, save_dir=Path("./figure"), unit="kJ/mol"):
         op = self.op
         title = "Free Energy"
         x_label = f"{op}"
         y_label = fr"$\beta F$"
         fig, ax = create_fig_ax(title, x_label, y_label)
         # ax.tick_params(axis='y')
-        self.plot_free_energy_plot_line(ax)
+        self.plot_free_energy_plot_line(ax, unit=unit)
 
         save_path = save_dir / f"sparse_sampling_free_energy.png"
         save_figure(fig, save_path)
         plt.close(fig)
 
-    def plot_different_DeltaT(self, save_dir=Path("./figure")):
-        T_m = 271  # K
-        Delta_H_m = 5.6  # kJ/mol
-        T_sim = np.mean(self.dataset.T)
-
-        title = fr"Free Energy Profile at Different $\Delta T$"
-        x_label = fr"$\lambda$"
-        y_label = fr"$G(\lambda;\Delta T) (kT)$"
-        fig, ax = create_fig_ax(title, x_label, y_label)
-        # ax.tick_params(axis='y')
-        self.plot_free_energy_plot_line(ax, label=r"Raw data (at $300\ \mathrm{K}$)")
-
-        for Delta_T in range(0, 105, 10):
-            T = T_m - Delta_T
-            Delta_mu = - Delta_H_m / T_m * (Delta_T + T_sim - T_m)
-            label = fr"${Delta_T}\ \mathrm{{K}}$"
-            self.plot_free_energy_plot_line(ax, delta_mu=Delta_mu, T=T, label=label)
-
-        ax.legend()
-        save_path = save_dir / f"sparse_sampling_DeltaT.png"
-        save_figure(fig, save_path)
-        plt.close(fig)
-
-        title = fr"Free Energy Profile at Different $\Delta T$ (Zoomed In)"
-        x_label = fr"$\lambda$"
-        y_label = fr"$G(\lambda;\Delta T)$ (kT)"
-        fig, ax = create_fig_ax(title, x_label, y_label)
-        # ax.tick_params(axis='y')
-        for Delta_T in range(0, 105, 5):
-            T = T_m - Delta_T
-            Delta_mu = - Delta_H_m / T_m * (Delta_T + T_sim - T_m)
-            label = fr"${Delta_T}\ {{\rm K}}$"
-            x_range = [0, 400]
-            self.plot_free_energy_plot_line(ax, delta_mu=Delta_mu, T=T, label=label, x_range=x_range)
-
-        ax.legend()
-        save_path = save_dir / f"sparse_sampling_DeltaT_zoomed_in.png"
-        save_figure(fig, save_path)
-        plt.close(fig)
-
-    def plot_dF_lambda_dx_star_plot_line(self, ax, label=None, **kwargs):
+    def plot_dF_lambda_dx_star_plot_line(self, ax, unit="kJ/mol", label=None, **kwargs):
         x_star = self.x_star
         dF_lambda_dx_star_u = self.dF_lambda_dx_star_u
-        line = plot_with_error_bar(ax, x_star, convert_unit(dF_lambda_dx_star_u), "o--", label=label, **kwargs)
+        assert unit in ["kJ/mol", "kT"]
+        if unit == "kJ/mol":
+            line = plot_with_error_bar(ax, x_star, dF_lambda_dx_star_u, "o--", label=label, **kwargs)
+        else:
+            line = plot_with_error_bar(ax, x_star, convert_unit(dF_lambda_dx_star_u), "o--", label=label, **kwargs)
         return line
 
-    def plot_detail(self, save_dir=Path("./figure")):
+    def plot_detail(self, save_dir=Path("./figure"), unit="kJ/mol"):
         op = self.op
         title = "Sparse Sampling (Detail)"
         x_label = f"{op}"
-        y_label = r"$\beta U_\lambda$"
-        fig, ax1 = create_fig_ax(title, x_label, y_label)
-        ax1.tick_params(axis='y', colors="blue")
-        x_u = self.x_u
-        x = unp.nominal_values(x_u)
-        U_lambda_u = self.U_lambda_u
-        line1 = plot_with_error_bar(ax1, x, convert_unit(U_lambda_u), "bo--", label=r"$\beta U_{\lambda}$")
+        assert unit in ["kJ/mol", "kT"]
+        if unit == "kJ/mol":
+            y_label = r"$dF_{\lambda} / dx$ (kJ/mol)"
+        else:
+            y_label = r"$\beta dF_{\lambda} / dx$"
+        fig, ax = create_fig_ax(title, x_label, y_label)
 
-        ax2 = ax1.twinx()
-        ax2.set_ylabel(r"$\beta dF_{\lambda} / dx$")
-        ax2.tick_params(axis='y', colors="red")
-        line2 = self.plot_dF_lambda_dx_star_plot_line(ax2, label=r"$\beta dF_{\lambda} / dx$", color="red")
+        line2 = self.plot_dF_lambda_dx_star_plot_line(ax, label=r"$\beta dF_{\lambda} / dx$")
 
-        lines = [line1, line2]
-        labels = [str(line.get_label()) for line in lines]
-        ax1.legend(lines, labels)
+        ax.legend()
 
         save_path = save_dir / f"sparse_sampling_detail.png"
         save_figure(fig, save_path)

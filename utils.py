@@ -1,12 +1,21 @@
 # Author: Mian Qin
 # Date Created: 2/4/24
 from pathlib import Path
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import numpy as np
 import scipy.constants as c
 
 from op_dataset import OPDataset
+
+
+def format_uncertainty(value, uncertainty, latex=True):
+    std_digits = int(np.floor(np.log10(uncertainty)))
+    std_rounded = round(uncertainty, -std_digits + 1)
+    mean_rounded = round(value, -std_digits + 1)
+    plus_minus_sign = r"\pm" if latex else "±"
+    result = f"{mean_rounded:.{-std_digits + 1}f} {plus_minus_sign} {std_rounded:.{-std_digits + 1}f}"
+    return result
 
 
 def read_solid_like_atoms(file_path: Path) -> dict[str, list[str]]:
@@ -90,11 +99,118 @@ def calculate_triangle_area(nodes, faces):
     return areas, total_area
 
 
+def compute_mean_curvature(nodes, faces):
+    normals = np.zeros_like(nodes)
+    for face in faces:
+        v0, v1, v2 = nodes[face]
+        e1 = v1 - v0
+        e2 = v2 - v0
+        n = np.cross(e1, e2)
+        normals[face[0]] += n
+        normals[face[1]] += n
+        normals[face[2]] += n
+    normals_len = np.linalg.norm(normals, axis=1, keepdims=True)
+    normals_len[normals_len == 0] = 1.0
+    normals /= normals_len
+
+    # 构建边到三角形的映射
+    edge_to_triangles = defaultdict(list)
+    for fidx, face in enumerate(faces):
+        for i in range(3):
+            a, b = sorted([face[i], face[(i + 1) % 3]])
+            edge_to_triangles[(a, b)].append(fidx)
+
+    # 计算 Voronoi 面积
+    voronoi_area = np.zeros(len(nodes))
+    for face in faces:
+        i, j, k = face
+        vi, vj, vk = nodes[i], nodes[j], nodes[k]
+
+        # 计算向量和长度
+        e_ij = vj - vi
+        e_ik = vk - vi
+        e_ji = vi - vj
+        e_jk = vk - vj
+        e_ki = vi - vk
+        e_kj = vj - vk
+
+        # 计算各个角的cot值
+        def compute_cot(a, b):
+            dot = np.dot(a, b)
+            cross = np.linalg.norm(np.cross(a, b))
+            return dot / (cross + 1e-6) if cross != 0 else 0.0
+
+        cot_i = compute_cot(e_ij, e_ik)
+        cot_j = compute_cot(e_ji, e_jk)
+        cot_k = compute_cot(e_ki, e_kj)
+
+        # 三角形面积
+        area = 0.5 * np.linalg.norm(np.cross(e_ij, e_ik))
+
+        # 判断钝角
+        theta_i_obtuse = np.dot(e_ij, e_ik) < 0
+        theta_j_obtuse = np.dot(e_ji, e_jk) < 0
+        theta_k_obtuse = np.dot(e_ki, e_kj) < 0
+
+        # 计算贡献
+        def compute_contrib(vertex, e1, e2, cot_other1, cot_other2, is_obtuse):
+            if is_obtuse:
+                return 0.5 * area
+            else:
+                return (np.dot(e1, e1) * cot_other2 + np.dot(e2, e2) * cot_other1) / 8
+
+        contrib_i = compute_contrib(i, e_ij, e_ik, cot_j, cot_k, theta_i_obtuse)
+        contrib_j = compute_contrib(j, e_ji, e_jk, cot_k, cot_i, theta_j_obtuse)
+        contrib_k = compute_contrib(k, e_ki, e_kj, cot_i, cot_j, theta_k_obtuse)
+
+        voronoi_area[i] += contrib_i
+        voronoi_area[j] += contrib_j
+        voronoi_area[k] += contrib_k
+
+    # 计算拉普拉斯-贝尔特拉米算子 delta_s
+    delta_s = np.zeros_like(nodes)
+    neighbors = defaultdict(set)
+    for face in faces:
+        for i in range(3):
+            a, b = face[i], face[(i + 1) % 3]
+            neighbors[a].add(b)
+            neighbors[b].add(a)
+
+    for vi in range(len(nodes)):
+        for vj in neighbors[vi]:
+            a, b = sorted([vi, vj])
+            edge = (a, b)
+            tris = edge_to_triangles.get(edge, [])
+            cot_sum = 0.0
+            for fidx in tris:
+                tri = faces[fidx]
+                vk = [v for v in tri if v != vi and v != vj][0]
+                e_vi_vk = nodes[vk] - nodes[vi]
+                e_vj_vk = nodes[vk] - nodes[vj]
+                cot = compute_cot(e_vi_vk, e_vj_vk)
+                cot_sum += cot
+            delta_s[vi] += cot_sum * (nodes[vj] - nodes[vi])
+
+    # 计算平均曲率
+    H = np.zeros(len(nodes))
+    for vi in range(len(nodes)):
+        A = voronoi_area[vi]
+        if A == 0:
+            H[vi] = 0.0
+            continue
+        Hn = delta_s[vi] / (2 * A)
+        H[vi] = np.dot(Hn, normals[vi])
+
+    return H
+
+
 def main():
-    nodes = np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0], [1, 0, 0]])
+    nodes = np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0], [1, 0, 0]], dtype=np.float64)
     faces = np.array([[0, 1, 2], [1, 0, 2], [1, 2, 3]])
-    areas, total_area = calculate_triangle_area(nodes, faces)
-    print(areas)
+    # areas, total_area = calculate_triangle_area(nodes, faces)
+    # print(areas)
+    H = compute_mean_curvature(nodes, faces)
+    print(H)
 
 
 if __name__ == "__main__":

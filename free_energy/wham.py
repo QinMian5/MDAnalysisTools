@@ -51,9 +51,9 @@ class BinlessWHAM:
                 if np.all(np.isfinite(energy_bootstrap_shifted)):
                     energy_list.append(energy_bootstrap_shifted)
             energy_array = np.stack(energy_list, axis=0)
-            energy_mean = np.mean(energy_array, axis=0)
+            # energy_mean = np.mean(energy_array, axis=0)
             energy_std = np.std(energy_array, axis=0, ddof=1)
-            energy = unp.uarray(energy_mean, energy_std)
+            energy = unp.uarray(energy, energy_std)
         self.energy = energy
 
     def wham(self, bootstrap=False):
@@ -68,9 +68,7 @@ class BinlessWHAM:
         N_i = np.array(N_i).reshape(-1, 1)
         N_tot = N_i.sum()
         all_coord = np.concatenate(all_coord, axis=0)
-        coordinates = {}
-        for column_name, coord in zip(op_in, all_coord.T):
-            coordinates[column_name] = coord
+        coordinates = {column_name: coord for column_name, coord in zip(op_in, all_coord.T)}
         Ui_Zj = []  # bias potential
         for job_name, op_data in self.dataset.items():
             bias = op_data.calculate_bias_potential(coordinates) * 1000 / c.N_A  # to J
@@ -116,7 +114,7 @@ class BinlessWHAM:
             alogsumexp(a=F_i - beta * Ui_Zj, b=N_i / N_tot, axis=0, keepdims=True), axis=1, keepdims=True)
         return A
 
-    def plot_free_energy_plot_line(self, ax, delta_mu=None, T=None, label=None, x_range=None):
+    def plot_free_energy_plot_line(self, ax, unit="kJ/mol", delta_mu=None, T=None, label=None, x_range=None):
         if T is None:
             T = self.dataset.T.mean()
         if delta_mu is None:
@@ -128,14 +126,22 @@ class BinlessWHAM:
             x = x[index]
             energy = energy[index]
 
-        line = plot_with_error_band(ax, x, convert_unit(energy + delta_mu * x, T=T), "-", label=label)
+        assert unit in ["kJ/mol", "kT"]
+        if unit == "kJ/mol":
+            line = plot_with_error_band(ax, x, energy, "-", label=label)  # In kJ/mol
+        else:
+            line = plot_with_error_band(ax, x, convert_unit(energy + delta_mu * x, T=T), "-", label=label)  # In kT
         return line
 
-    def plot_free_energy(self, save_dir=Path("./figure")):
+    def plot_free_energy(self, save_dir=Path("./figure"), unit="kJ/mol"):
         op = self.op_out
         title = "Free Energy"
         x_label = f"{op}"
-        y_label = fr"$\beta G$"
+        assert unit in ["kJ/mol", "kT"]
+        if unit == "kJ/mol":
+            y_label = fr"$G$ (kJ/mol)"
+        else:
+            y_label = fr"$\beta G$"
         fig, ax = create_fig_ax(title, x_label, y_label)
         self.plot_free_energy_plot_line(ax)
 

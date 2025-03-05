@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from op_dataset import OPDataset, load_dataset
 from eda import EDA
-from free_energy import SparseSampling
+from free_energy import SparseSampling, BinlessWHAM
 from utils import calculate_triangle_area
 from utils_plot import create_fig_ax, plot_with_error_bar, save_figure, plot_with_error_band
 from free_energy_reweighting import reweight_free_energy, get_delta_T_star
@@ -42,9 +42,8 @@ def read_data(process) -> OPDataset:
         data_dir=data_dir,
         job_params=job_params,
         file_type="csv",
-        column_names=["t", "QBAR", "box.N", "box.Ntilde", "bias_qbar.value", "lambda_chillplus"],
-        column_types={"t": float, "QBAR": float, "box.N": int, "box.Ntilde": float, "bias_qbar.value": float,
-                      "lambda_chillplus": int},
+        column_names=["t", "QBAR", "box.N", "box.Ntilde", "bias_qbar.value", "chillplus"],
+        column_types={"t": float, "QBAR": float, "chillplus": int},
     )
     # dataset: OPDataset = load_dataset(
     #     data_dir=data_dir,
@@ -67,7 +66,7 @@ def post_processing_eda(process):
     eda.calculate_acf()
     eda.determine_autocorr_time(figure_save_dir, ignore_previous=0)
     eda.plot_op(save_dir=figure_save_dir)
-    eda.plot_histogram(bin_width=5, bin_range=(0, 1000), save_dir=figure_save_dir)
+    eda.plot_histogram(bin_width=2, bin_range=(0, 400), save_dir=figure_save_dir)
     eda.plot_acf(save_dir=figure_save_dir)
     eda.plot_act(save_dir=figure_save_dir)
 
@@ -83,6 +82,20 @@ def post_processing_ss(process):
     ss.plot_different_DeltaT(save_dir=figure_save_dir)
     ss.plot_detail(save_dir=figure_save_dir)
     ss.save_result()
+
+
+def post_processing_wham(process):
+    figure_save_dir = home_path / f"data/gromacs/hom_nucleation/prd/{process}/figure"
+    dataset = read_data(process)
+
+    op_in = ["QBAR", "chillplus"]
+    op_out = "chillplus"
+    wham = BinlessWHAM(dataset, op_in, op_out, bin_range=(10, 350))
+    # wham.load_result()
+    wham.calculate(with_uncertainties=1, n_iter=1000)
+    wham.save_result()
+    wham.plot_free_energy(save_dir=figure_save_dir)
+    # wham.plot_different_DeltaT(save_dir=figure_save_dir)
 
 
 def compare_reweighting_method():
@@ -197,10 +210,11 @@ def main_Delta_T_star(process):
 
 def main():
     process = "melting_300K"
-    # post_processing_eda()
+    # post_processing_eda(process)
     # post_processing_ss(process)
+    post_processing_wham(process)
     # compare_reweighting_method()
-    main_Delta_T_star(process)
+    # main_Delta_T_star(process)
 
 
 if __name__ == "__main__":

@@ -83,10 +83,8 @@ class OPData:
         N_block = self.independent_samples
         block_size = int(len(df) / N_block)
         index_start = np.random.randint(0, len(df) - block_size + 1, size=(N_block,))
-        df_list = []
-        for index in index_start:
-            df_list.append(df.iloc[index:index + block_size])
-        df_bb = pd.concat(df_list, axis=0)
+        df_list = [df.iloc[index:index + block_size] for index in index_start]
+        df_bb = pd.concat(df_list, axis=0, ignore_index=True)
         return df_bb
 
     @property
@@ -210,7 +208,7 @@ class OPDataset(OrderedDict[str, OPData]):
                 with open(load_path, "r") as file:
                     relaxation_time = float(file.read().strip())
                     op_data.relaxation_time = relaxation_time
-                    print(f"{job_name}: Loaded relaxation time from {load_path}")
+                    # print(f"{job_name}: Loaded relaxation time from {load_path}")
 
     def save_act(self):
         for job_name, op_data in self.items():
@@ -228,7 +226,7 @@ class OPDataset(OrderedDict[str, OPData]):
                 with open(load_path, "r") as file:
                     act = float(file.read().strip())
                     op_data.autocorr_time = act
-                    print(f"{job_name}: Loaded ACT from {load_path}")
+                    # print(f"{job_name}: Loaded ACT from {load_path}")
 
 
 def load_dataset(data_dir: [str, Path], job_params: dict[str, dict], file_type: str,
